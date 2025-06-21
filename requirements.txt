@@ -1,0 +1,16 @@
+python-dotenv
+fastapi
+aiogram
+openai
+aiohttp
+tiktoken
+requests
+beautifulsoup4
+pydub
+uvicorn
+pypdf
+pinecone
+tenacity
+python-docx
+striprtf
+odfpy
