@@ -95,7 +95,7 @@ ARIANNA_NAMES = [
     "arianna", "арианна", "ariana", "ariane", "@arianna_isnota_bot"
 ]
 
-# --- LLM/AI CORE (GPT-4.1 integration) ---
+# --- LLM/AI CORE (GPT-4.1 integration, FIXED) ---
 async def ask_core(prompt, chat_id=None, model_name=None, is_group=False):
     import tiktoken
     add_opinion = "#opinions" in prompt
@@ -187,26 +187,22 @@ async def ask_core(prompt, chat_id=None, model_name=None, is_group=False):
             CHAT_HISTORY[chat_id] = trimmed
         return reply
 
-    # --- GPT-4.1 call (run in executor, sync call)
+    # --- GPT-4.1 call (correct OpenAI API method) ---
     def call_gpt41_sync():
         try:
             chat_input = []
             for msg in messages:
                 chat_input.append({"role": msg["role"], "content": msg["content"]})
-            response = client.responses.create(
+            response = client.chat.completions.create(
                 model="gpt-4.1",
-                input=chat_input,
-                text={"format": {"type": "text"}},
-                reasoning={},
-                tools=[],
+                messages=chat_input,
+                max_tokens=700,
                 temperature=1,
-                max_output_tokens=10000,
                 top_p=1,
-                store=True
             )
-            if hasattr(response, "output") and len(response.output) > 0 and hasattr(response.output[0], "text"):
-                return response.output[0].text.strip()
-            return None
+            if not response.choices or not hasattr(response.choices[0], "message") or not response.choices[0].message.content:
+                return None
+            return response.choices[0].message.content.strip()
         except Exception as e:
             print(f"gpt-4.1 error: {e}")
             return None
@@ -309,7 +305,7 @@ async def text_to_speech(text, lang="ru"):
         return None
 
 # --- COMMANDS ---
-@dp.message(lambda m: m.text and m.text.strip().lower() in ("/model gpt-4.1", "/model 4.1", "/model arianna"))
+@dp.message(lambda m: m.text and m.text.strip().lower() in ("/model gpt-4.1", "/model 4.1", "/model arianna", "/gpt"))
 async def set_model_gpt41(message: types.Message):
     USER_MODEL[message.chat.id] = "gpt-4.1"
     CHAT_HISTORY[message.chat.id] = []
