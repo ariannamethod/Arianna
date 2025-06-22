@@ -35,7 +35,6 @@ CORE_CONFIG_URL = os.getenv("CORE_CONFIG_URL", "https://manday.ariannamethod.me/
 AGENT_NAME = os.getenv("GROUP_ID", "ARIANNA-ANCHOR")
 CREATOR_CHAT_ID = os.getenv("CREATOR_CHAT_ID")
 BOT_USERNAME = "arianna_isnota_bot"
-
 GROUP_ID = os.getenv("GROUP_ID", "ARIANNA-CORE")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX")
@@ -188,7 +187,7 @@ async def ask_core(prompt, chat_id=None, model_name=None, is_group=False):
             CHAT_HISTORY[chat_id] = trimmed
         return reply
 
-    # --- GPT-4.1 call (run in executor, sync call, потому что client.responses.create синхронный)
+    # --- GPT-4.1 call (run in executor, sync call)
     def call_gpt41_sync():
         try:
             chat_input = []
@@ -439,7 +438,6 @@ async def handle_voice(message: types.Message):
             elif mode == "gpt-4.1":
                 with open(fname, "rb") as audio_file:
                     audio_b64 = base64.b64encode(audio_file.read()).decode("utf-8")
-                # Прямого аудио-инпута в gpt-4.1 нет, просто отправим как текст (если нужно — доработать)
                 reply = await ask_core("Audio message received (raw base64, not decoded in this model)", chat_id=chat_id)
                 for chunk in split_message(reply):
                     await message.answer(chunk)
