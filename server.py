@@ -26,7 +26,7 @@ from utils.vector_store import (
 )
 from utils.text_helpers import fuzzy_match, extract_text_from_url
 from utils.journal import log_event, wilderness_log
-from utils.promt import build_system_prompt, REFLECTION_TOPICS
+from utils.prompt import build_system_prompt, REFLECTION_TOPICS
 from utils.deepseek_search import call_deepseek, rotate_deepseek_key
 
 # === Arianna's daily resonance background process ===
