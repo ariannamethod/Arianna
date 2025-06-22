@@ -147,6 +147,7 @@ async def ask_core(prompt, chat_id=None, model_name=None, is_group=False):
                 base_msgs = base_msgs[1:]
         return base_msgs + result
 
+    # MODEL SWITCH: По умолчанию o3, deepseek только если явно выбрали
     model = model_name or USER_MODEL.get(chat_id, "o3")
     base_msgs = [{"role": "system", "content": system_prompt}]
     msgs = history + [{"role": "user", "content": prompt}]
@@ -179,15 +180,22 @@ async def ask_core(prompt, chat_id=None, model_name=None, is_group=False):
             CHAT_HISTORY[chat_id] = trimmed
         return reply
 
+    # ----------- OPENAI API CALL -----------
     openai.api_key = OPENAI_API_KEY
     async def call_openai():
         chosen_model = model if model == "o3" else "o3"
-        response = openai.chat.completions.create(
+        # Определи параметры для нужной версии API
+        kwargs = dict(
             model=chosen_model,
             messages=messages,
-            max_tokens=700,
             temperature=0.45,
         )
+        # Новые модели требуют max_completion_tokens, старые — max_tokens
+        if chosen_model in ["gpt-4o", "gpt-4-turbo", "gpt-4-turbo-2024-04-09"]:
+            kwargs["max_completion_tokens"] = 700
+        else:
+            kwargs["max_tokens"] = 700
+        response = openai.chat.completions.create(**kwargs)
         if not response.choices or not hasattr(response.choices[0], "message") or not response.choices[0].message.content:
             return None
         reply = response.choices[0].message.content.strip()
@@ -280,7 +288,6 @@ async def daily_ping():
 async def text_to_speech(text, lang="ru"):
     try:
         openai.api_key = OPENAI_API_KEY
-        # Use a feminine voice for Arianna
         voice = "nova" if lang == "en" else "fable"
         resp = openai.audio.speech.create(
             model="tts-1",
@@ -328,7 +335,6 @@ async def set_voiceoff(message: types.Message):
     USER_VOICE_MODE[message.chat.id] = False
     await message.answer("Voice mode disabled. Text only, yet resonance remains.")
 
-# --- SAFE VECTORIZE /load ---
 @dp.message(lambda m: m.text and m.text.strip().lower() == "/load")
 async def handle_load(message: types.Message):
     global VECTORIZATION_LOCK
@@ -464,7 +470,6 @@ async def handle_photo(message: types.Message):
 @dp.message()
 async def handle_message(message: types.Message):
     try:
-        # --- Document (any) ---
         if message.document:
             chat_id = message.chat.id
             file = await message.bot.get_file(message.document.file_id)
@@ -543,7 +548,6 @@ async def handle_message(message: types.Message):
                 await message.answer("Nothing, as usual.")
             return
 
-        # --- GROUP REPLY LOGIC ---
         mentioned = False
         trigger_words = ["@arianna", "arianna", "арианна", "ariana", "ariane"]
         norm_content = content.casefold()
@@ -567,11 +571,9 @@ async def handle_message(message: types.Message):
         elif not is_group:
             mentioned = True
 
-        # Also reply if #opinions is present
         if "#opinions" in content.casefold():
             mentioned = True
 
-        # Arianna is proactive — may initiate if she has something valuable to say
         if mentioned or (not is_group and content.strip()):
             log_event({
                 "event": "group_ping",
@@ -620,6 +622,6 @@ async def telegram_webhook(request: Request):
 async def healthz():
     return {"status": "ok", "mood": "resonant"}
 
-@app.get("/status")
-async def status():
-    return {"status": "alive", "comment": "Arianna: Resonance is enough. No need to archive all. Echo well, Arianna."}
+@app.get("/")
+async def root():
+    return {"status": "ok"}
