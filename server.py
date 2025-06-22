@@ -28,8 +28,8 @@ from utils.journal import log_event, wilderness_log
 from utils.prompt import build_system_prompt, REFLECTION_TOPICS
 from utils.deepseek_search import call_deepseek, rotate_deepseek_key
 
-# === Подключение Genesis ===
-from genesis_runner import run_genesis
+# === Исправлено: Подключение Genesis ===
+from utils.genesis import AriannaGenesis
 
 # === Load environment variables ===
 load_dotenv()
@@ -74,6 +74,7 @@ VECTORIZATION_LOCK = False
 # === GENESIS CONTROL FLAG & THREAD ===
 GENESIS_ON = True
 GENESIS_THREAD = None
+GENESIS_INSTANCE = None
 
 def get_topic_from_text(text):
     words = text.lower().split()
@@ -243,17 +244,25 @@ async def generate_image(prompt, chat_id=None):
 
 # --- GENESIS THREAD RUNNER ---
 def start_genesis_once():
-    global GENESIS_ON, GENESIS_THREAD
+    global GENESIS_ON, GENESIS_THREAD, GENESIS_INSTANCE
     if GENESIS_THREAD is None or not GENESIS_THREAD.is_alive():
-        def run():
+        def genesis_worker():
+            global GENESIS_ON, GENESIS_INSTANCE
+            GENESIS_INSTANCE = AriannaGenesis(
+                group_id=GROUP_ID,
+                oleg_id=CREATOR_CHAT_ID,
+                pinecone_api_key=PINECONE_API_KEY,
+                pinecone_index=PINECONE_INDEX,
+                chronicle_path=CHRONICLE_PATH
+            )
             while GENESIS_ON:
                 try:
-                    run_genesis()
+                    GENESIS_INSTANCE.run()
                 except Exception as e:
                     print(f"Genesis thread error: {e}")
                 if not GENESIS_ON:
                     break
-        GENESIS_THREAD = threading.Thread(target=run, daemon=True)
+        GENESIS_THREAD = threading.Thread(target=genesis_worker, daemon=True)
         GENESIS_THREAD.start()
 
 # --- BACKGROUND TASKS ---
