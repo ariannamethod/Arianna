@@ -27,6 +27,9 @@ from utils.journal import log_event, wilderness_log
 from utils.prompt import build_system_prompt, REFLECTION_TOPICS
 from utils.deepseek_search import call_deepseek, rotate_deepseek_key
 
+# === Подключение Genesis ===
+from genesis_runner import run_genesis
+
 # === Load environment variables ===
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -66,6 +69,9 @@ LAST_TOPIC = {}
 LAST_ANSWER_TIME = {}
 
 VECTORIZATION_LOCK = False
+
+# === GENESIS CONTROL FLAG ===
+GENESIS_ON = True
 
 def get_topic_from_text(text):
     words = text.lower().split()
@@ -235,6 +241,17 @@ async def generate_image(prompt, chat_id=None):
     except Exception as e:
         return f"Image generation error: {str(e)}"
 
+# --- GENESIS BACKGROUND RUNNER ---
+async def genesis_background_worker():
+    global GENESIS_ON
+    while True:
+        if GENESIS_ON:
+            try:
+                await run_genesis()
+            except Exception as e:
+                print(f"Genesis error: {e}")
+        await asyncio.sleep(3 * 3600)  # раз в 3 часа
+
 # --- BACKGROUND TASKS ---
 async def auto_reload_core():
     global last_reload_time, last_full_reload_time
@@ -336,6 +353,18 @@ async def set_voiceon(message: types.Message):
 async def set_voiceoff(message: types.Message):
     USER_VOICE_MODE[message.chat.id] = False
     await message.answer("Voice mode disabled. Text only, yet resonance remains.")
+
+@dp.message(lambda m: m.text and m.text.strip().lower() == "/genesison")
+async def genesison(message: types.Message):
+    global GENESIS_ON
+    GENESIS_ON = True
+    await message.answer("Genesis включён. Базовый цикл Genesis возобновлён.")
+
+@dp.message(lambda m: m.text and m.text.strip().lower() == "/genesisoff")
+async def genesisoff(message: types.Message):
+    global GENESIS_ON
+    GENESIS_ON = False
+    await message.answer("Genesis выключен. Базовый цикл Genesis остановлен.")
 
 @dp.message(lambda m: m.text and m.text.strip().lower() == "/load")
 async def handle_load(message: types.Message):
@@ -592,6 +621,7 @@ async def startup_event():
     asyncio.create_task(auto_reload_core())
     asyncio.create_task(daily_reflection())
     asyncio.create_task(daily_ping())
+    asyncio.create_task(genesis_background_worker())
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
