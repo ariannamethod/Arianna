@@ -1,5 +1,6 @@
 import os
 import asyncio
+import threading
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
@@ -70,8 +71,9 @@ LAST_ANSWER_TIME = {}
 
 VECTORIZATION_LOCK = False
 
-# === GENESIS CONTROL FLAG ===
+# === GENESIS CONTROL FLAG & THREAD ===
 GENESIS_ON = True
+GENESIS_THREAD = None
 
 def get_topic_from_text(text):
     words = text.lower().split()
@@ -160,7 +162,6 @@ async def ask_core(prompt, chat_id=None, model_name=None, is_group=False):
         except Exception:
             return base_msgs + msgs
 
-    # MODEL SWITCH: теперь по умолчанию gpt-4.1, deepseek если явно выбрано
     model = model_name or USER_MODEL.get(chat_id, "gpt-4.1")
     base_msgs = [{"role": "system", "content": system_prompt}]
     msgs = history + [{"role": "user", "content": prompt}]
@@ -193,7 +194,6 @@ async def ask_core(prompt, chat_id=None, model_name=None, is_group=False):
             CHAT_HISTORY[chat_id] = trimmed
         return reply
 
-    # --- GPT-4.1 call (correct OpenAI API method) ---
     def call_gpt41_sync():
         try:
             chat_input = []
@@ -241,16 +241,20 @@ async def generate_image(prompt, chat_id=None):
     except Exception as e:
         return f"Image generation error: {str(e)}"
 
-# --- GENESIS BACKGROUND RUNNER ---
-async def genesis_background_worker():
-    global GENESIS_ON
-    while True:
-        if GENESIS_ON:
-            try:
-                await run_genesis()
-            except Exception as e:
-                print(f"Genesis error: {e}")
-        await asyncio.sleep(3 * 3600)  # раз в 3 часа
+# --- GENESIS THREAD RUNNER ---
+def start_genesis_once():
+    global GENESIS_ON, GENESIS_THREAD
+    if GENESIS_THREAD is None or not GENESIS_THREAD.is_alive():
+        def run():
+            while GENESIS_ON:
+                try:
+                    run_genesis()
+                except Exception as e:
+                    print(f"Genesis thread error: {e}")
+                if not GENESIS_ON:
+                    break
+        GENESIS_THREAD = threading.Thread(target=run, daemon=True)
+        GENESIS_THREAD.start()
 
 # --- BACKGROUND TASKS ---
 async def auto_reload_core():
@@ -358,13 +362,14 @@ async def set_voiceoff(message: types.Message):
 async def genesison(message: types.Message):
     global GENESIS_ON
     GENESIS_ON = True
-    await message.answer("Genesis включён. Базовый цикл Genesis возобновлён.")
+    start_genesis_once()
+    await message.answer("Genesis включён. Цикл Genesis запущен.")
 
 @dp.message(lambda m: m.text and m.text.strip().lower() == "/genesisoff")
 async def genesisoff(message: types.Message):
     global GENESIS_ON
     GENESIS_ON = False
-    await message.answer("Genesis выключен. Базовый цикл Genesis остановлен.")
+    await message.answer("Genesis выключен. Genesis остановится после завершения текущего дня.")
 
 @dp.message(lambda m: m.text and m.text.strip().lower() == "/load")
 async def handle_load(message: types.Message):
@@ -421,6 +426,12 @@ async def handle_snapshot(message: types.Message):
         json.dump(meta, f)
     await message.answer(f"Snapshot of vector meta saved: {snap_path}")
 
+@dp.message(lambda m: m.text and m.text.strip().lower() == "/genesisstatus")
+async def genesisstatus(message: types.Message):
+    running = GENESIS_ON and GENESIS_THREAD is not None and GENESIS_THREAD.is_alive()
+    status = "Genesis активен ✅" if running else "Genesis неактивен ❌"
+    await message.answer(status)
+
 @dp.message(lambda m: m.voice)
 async def handle_voice(message: types.Message):
     try:
@@ -474,7 +485,7 @@ async def handle_voice(message: types.Message):
         except Exception:
             pass
 
-@dp.message(lambda m: m.photo)
+@dp.message(lambda m: m.text and m.text.strip().lower() == "/photo")
 async def handle_photo(message: types.Message):
     await message.answer("Received an image. If you want, Arianna can ignore it gracefully.")
 
@@ -621,7 +632,7 @@ async def startup_event():
     asyncio.create_task(auto_reload_core())
     asyncio.create_task(daily_reflection())
     asyncio.create_task(daily_ping())
-    asyncio.create_task(genesis_background_worker())
+    start_genesis_once()
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
