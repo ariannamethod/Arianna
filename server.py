@@ -6,7 +6,6 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import FSInputFile
 from dotenv import load_dotenv
-import openai
 import base64
 from pydub import AudioSegment
 import re
@@ -41,6 +40,9 @@ GROUP_ID = os.getenv("GROUP_ID", "ARIANNA-CORE")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX")
 CHRONICLE_PATH = os.getenv("CHRONICLE_PATH", "./config/chronicle.log")
+
+from openai import OpenAI
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 bot = Bot(token=TELEGRAM_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher(bot=bot)
@@ -94,7 +96,7 @@ ARIANNA_NAMES = [
     "arianna", "арианна", "ariana", "ariane", "@arianna_isnota_bot"
 ]
 
-# --- LLM/AI CORE
+# --- LLM/AI CORE (GPT-4.1 integration) ---
 async def ask_core(prompt, chat_id=None, model_name=None, is_group=False):
     import tiktoken
     add_opinion = "#opinions" in prompt
@@ -113,46 +115,52 @@ async def ask_core(prompt, chat_id=None, model_name=None, is_group=False):
 
     history = CHAT_HISTORY.get(chat_id, [])
 
-    def count_tokens(messages, model):
-        enc = tiktoken.get_encoding("cl100k_base")
-        num_tokens = 0
-        for m in messages:
-            num_tokens += 4
-            if isinstance(m.get("content", ""), str):
-                num_tokens += len(enc.encode(m.get("content", "")))
-        return num_tokens
-
-    def messages_within_token_limit(base_msgs, msgs, max_tokens, model):
-        enc = tiktoken.get_encoding("cl100k_base")
-        def count(messages):
+    def count_tokens(messages):
+        try:
+            enc = tiktoken.get_encoding("cl100k_base")
             num_tokens = 0
             for m in messages:
                 num_tokens += 4
                 if isinstance(m.get("content", ""), str):
                     num_tokens += len(enc.encode(m.get("content", "")))
             return num_tokens
-        result = []
-        last_user = None
-        for m in reversed(msgs):
-            candidate = result[:]
-            candidate.insert(0, m)
-            if count(base_msgs + candidate) > max_tokens:
-                break
-            result = candidate
-            if m.get('role') == 'user' and last_user is None:
-                last_user = m
-        if last_user and not any(m is last_user for m in result):
-            result = [last_user]
-            while count(base_msgs + result) > max_tokens and base_msgs:
-                base_msgs = base_msgs[1:]
-        return base_msgs + result
+        except Exception:
+            return 0
 
-    # MODEL SWITCH: По умолчанию o3, deepseek только если явно выбрали
-    model = model_name or USER_MODEL.get(chat_id, "o3")
+    def messages_within_token_limit(base_msgs, msgs, max_tokens):
+        try:
+            enc = tiktoken.get_encoding("cl100k_base")
+            def count(messages):
+                num_tokens = 0
+                for m in messages:
+                    num_tokens += 4
+                    if isinstance(m.get("content", ""), str):
+                        num_tokens += len(enc.encode(m.get("content", "")))
+                return num_tokens
+            result = []
+            last_user = None
+            for m in reversed(msgs):
+                candidate = result[:]
+                candidate.insert(0, m)
+                if count(base_msgs + candidate) > max_tokens:
+                    break
+                result = candidate
+                if m.get('role') == 'user' and last_user is None:
+                    last_user = m
+            if last_user and not any(m is last_user for m in result):
+                result = [last_user]
+                while count(base_msgs + result) > max_tokens and base_msgs:
+                    base_msgs = base_msgs[1:]
+            return base_msgs + result
+        except Exception:
+            return base_msgs + msgs
+
+    # MODEL SWITCH: теперь по умолчанию gpt-4.1, deepseek если явно выбрано
+    model = model_name or USER_MODEL.get(chat_id, "gpt-4.1")
     base_msgs = [{"role": "system", "content": system_prompt}]
     msgs = history + [{"role": "user", "content": prompt}]
-    messages = messages_within_token_limit(base_msgs, msgs, MAX_PROMPT_TOKENS, model)
-    log_event({"event": "ask_core", "chat_id": chat_id, "prompt": prompt, "model": model, "tokens": count_tokens(messages, model)})
+    messages = messages_within_token_limit(base_msgs, msgs, MAX_PROMPT_TOKENS)
+    log_event({"event": "ask_core", "chat_id": chat_id, "prompt": prompt, "model": model, "tokens": count_tokens(messages)})
 
     async def retry_api_call(api_func, max_retries=2, retry_delay=1):
         for attempt in range(max_retries):
@@ -176,34 +184,35 @@ async def ask_core(prompt, chat_id=None, model_name=None, is_group=False):
         if chat_id:
             history.append({"role": "user", "content": prompt})
             history.append({"role": "assistant", "content": reply})
-            trimmed = messages_within_token_limit(base_msgs, history, MAX_PROMPT_TOKENS, model)[1:]
+            trimmed = messages_within_token_limit(base_msgs, history, MAX_PROMPT_TOKENS)[1:]
             CHAT_HISTORY[chat_id] = trimmed
         return reply
 
-    # ----------- OPENAI API CALL -----------
-    openai.api_key = OPENAI_API_KEY
-    async def call_openai():
-        chosen_model = model if model == "o3" else "o3"
-        # Определи параметры для нужной версии API
-        kwargs = dict(
-            model=chosen_model,
-            messages=messages,
-            temperature=0.45,
-        )
-        # Новые модели требуют max_completion_tokens, старые — max_tokens
-        if chosen_model in ["gpt-4o", "gpt-4-turbo", "gpt-4-turbo-2024-04-09"]:
-            kwargs["max_completion_tokens"] = 700
-        else:
-            kwargs["max_tokens"] = 700
-        response = openai.chat.completions.create(**kwargs)
-        if not response.choices or not hasattr(response.choices[0], "message") or not response.choices[0].message.content:
+    # --- GPT-4.1 call (run in executor, sync call, потому что client.responses.create синхронный)
+    def call_gpt41_sync():
+        try:
+            chat_input = []
+            for msg in messages:
+                chat_input.append({"role": msg["role"], "content": msg["content"]})
+            response = client.responses.create(
+                model="gpt-4.1",
+                input=chat_input,
+                text={"format": {"type": "text"}},
+                reasoning={},
+                tools=[],
+                temperature=1,
+                max_output_tokens=10000,
+                top_p=1,
+                store=True
+            )
+            if hasattr(response, "output") and len(response.output) > 0 and hasattr(response.output[0], "text"):
+                return response.output[0].text.strip()
             return None
-        reply = response.choices[0].message.content.strip()
-        if not reply:
+        except Exception as e:
+            print(f"gpt-4.1 error: {e}")
             return None
-        return reply
 
-    reply = await retry_api_call(call_openai)
+    reply = await retry_api_call(lambda: asyncio.get_event_loop().run_in_executor(None, call_gpt41_sync))
     if not reply:
         reply = "Error: empty response from Arianna’s core after several attempts. Try again or switch model."
         CHAT_HISTORY[chat_id] = []
@@ -213,15 +222,14 @@ async def ask_core(prompt, chat_id=None, model_name=None, is_group=False):
     if chat_id:
         history.append({"role": "user", "content": prompt})
         history.append({"role": "assistant", "content": reply})
-        trimmed = messages_within_token_limit(base_msgs, history, MAX_PROMPT_TOKENS, model)[1:]
+        trimmed = messages_within_token_limit(base_msgs, history, MAX_PROMPT_TOKENS)[1:]
         CHAT_HISTORY[chat_id] = trimmed
     log_event({"event": "ask_core_reply", "chat_id": chat_id, "reply": reply})
     return reply
 
 async def generate_image(prompt, chat_id=None):
-    openai.api_key = OPENAI_API_KEY
     try:
-        response = openai.images.generate(
+        response = client.images.generate(
             model="dall-e-3",
             prompt=prompt,
             n=1,
@@ -284,12 +292,11 @@ async def daily_ping():
             last_ping_time = now
         await asyncio.sleep(3600)
 
-# --- TTS
+# --- TTS (OpenAI Whisper + TTS) ---
 async def text_to_speech(text, lang="ru"):
     try:
-        openai.api_key = OPENAI_API_KEY
         voice = "nova" if lang == "en" else "fable"
-        resp = openai.audio.speech.create(
+        resp = client.audio.speech.create(
             model="tts-1",
             voice=voice,
             input=text,
@@ -303,11 +310,11 @@ async def text_to_speech(text, lang="ru"):
         return None
 
 # --- COMMANDS ---
-@dp.message(lambda m: m.text and m.text.strip().lower() in ("/model o3", "/model gpt-o3", "/model arianna"))
-async def set_model_o3(message: types.Message):
-    USER_MODEL[message.chat.id] = "o3"
+@dp.message(lambda m: m.text and m.text.strip().lower() in ("/model gpt-4.1", "/model 4.1", "/model arianna"))
+async def set_model_gpt41(message: types.Message):
+    USER_MODEL[message.chat.id] = "gpt-4.1"
     CHAT_HISTORY[message.chat.id] = []
-    await message.answer("Now using the Arianna core (o3). History cleared. Stay resonant.")
+    await message.answer("Теперь используется ядро Arianna (gpt-4.1). История очищена.")
 
 @dp.message(lambda m: m.text and m.text.strip().lower() == "/deepseek")
 async def set_deepseek_r1(message: types.Message):
@@ -315,10 +322,10 @@ async def set_deepseek_r1(message: types.Message):
     CHAT_HISTORY[message.chat.id] = []
     await message.answer("♻️ Core: DeepSeek R1. Expect a different resonance.")
 
-@dp.message(lambda m: m.text and m.text.strip().lower() == "/audioo3")
-async def set_audio_o3(message: types.Message):
-    USER_AUDIO_MODE[message.chat.id] = "o3"
-    await message.answer("Audio mode: o3. Expect a more subjective voice.")
+@dp.message(lambda m: m.text and m.text.strip().lower() == "/audio41")
+async def set_audio_gpt41(message: types.Message):
+    USER_AUDIO_MODE[message.chat.id] = "gpt-4.1"
+    await message.answer("Audio mode: gpt-4.1. Expect a more subjective voice.")
 
 @dp.message(lambda m: m.text and m.text.strip().lower() == "/whisperon")
 async def set_whisper(message: types.Message):
@@ -409,7 +416,7 @@ async def handle_voice(message: types.Message):
         try:
             if mode == "whisper":
                 with open(fname, "rb") as audio_file:
-                    transcript = openai.audio.transcriptions.create(
+                    transcript = client.audio.transcriptions.create(
                         model="whisper-1",
                         file=audio_file,
                     )
@@ -429,32 +436,13 @@ async def handle_voice(message: types.Message):
                                 await message.answer("Sorry, Telegram failed — try again.")
                     else:
                         await message.answer(chunk)
-            elif mode == "o3":
+            elif mode == "gpt-4.1":
                 with open(fname, "rb") as audio_file:
                     audio_b64 = base64.b64encode(audio_file.read()).decode("utf-8")
-                response = openai.chat.completions.create(
-                    model="o3",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": "What is in this audio and why does it resonate?"},
-                                {"type": "input_audio", "input_audio": {"data": audio_b64, "format": "ogg"}}
-                            ]
-                        }
-                    ]
-                )
-                answer = response.choices[0].message.content
-                if USER_VOICE_MODE.get(chat_id):
-                    audio_data = await text_to_speech(answer, lang=USER_LANG.get(chat_id, "ru"))
-                    if audio_data:
-                        try:
-                            voice_file = FSInputFile(audio_data)
-                            await message.answer_voice(voice_file, caption="arianna.ogg")
-                        except Exception:
-                            await message.answer("Sorry, Telegram failed — try again.")
-                else:
-                    await message.answer(answer)
+                # Прямого аудио-инпута в gpt-4.1 нет, просто отправим как текст (если нужно — доработать)
+                reply = await ask_core("Audio message received (raw base64, not decoded in this model)", chat_id=chat_id)
+                for chunk in split_message(reply):
+                    await message.answer(chunk)
         except Exception as e:
             await message.answer(f"Voice/audio error: {str(e)}")
     except Exception as e:
@@ -581,7 +569,7 @@ async def handle_message(message: types.Message):
                 "from": getattr(message.from_user, "username", None) or getattr(message.from_user, "id", None),
                 "text": content
             })
-            model = USER_MODEL.get(chat_id, "o3")
+            model = USER_MODEL.get(chat_id, "gpt-4.1")
             reply = await ask_core(content, chat_id=chat_id, model_name=model, is_group=is_group)
             remember_topic(chat_id, topic)
             for chunk in split_message(reply):
