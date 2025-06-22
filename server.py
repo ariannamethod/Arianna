@@ -1,6 +1,5 @@
 import os
 import asyncio
-import threading
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher, types
@@ -28,9 +27,6 @@ from utils.text_helpers import fuzzy_match, extract_text_from_url
 from utils.journal import log_event, wilderness_log
 from utils.prompt import build_system_prompt, REFLECTION_TOPICS
 from utils.deepseek_search import call_deepseek, rotate_deepseek_key
-
-# === Arianna's daily resonance background process ===
-from utils.genesis import AriannaGenesis
 
 # === Load environment variables ===
 load_dotenv()
@@ -279,20 +275,6 @@ async def daily_ping():
                     pass
             last_ping_time = now
         await asyncio.sleep(3600)
-
-# --- INTEGRATE ARIANNA GENESIS (background process, sync thread) ---
-def run_genesis():
-    genesis = AriannaGenesis(
-        group_id=GROUP_ID,
-        oleg_id=CREATOR_CHAT_ID,
-        pinecone_api_key=PINECONE_API_KEY,
-        pinecone_index=PINECONE_INDEX,
-        chronicle_path=CHRONICLE_PATH
-    )
-    genesis.run()
-
-# Start genesis in background thread at launch
-threading.Thread(target=run_genesis, daemon=True).start()
 
 # --- TTS
 async def text_to_speech(text, lang="ru"):
