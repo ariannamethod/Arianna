@@ -2,30 +2,39 @@ import os
 import asyncio
 import httpx
 from glob import glob
-from openai import AsyncOpenAI
 
 class AriannaEngine:
+    """
+    Обёртка Assistants API для Арианны:
+    — хранит память в threads,
+    — запускает ассистента с её системным промптом и Genesis-функцией.
+    """
+
     def __init__(self):
         self.openai_key = os.getenv("OPENAI_API_KEY")
-        self.headers = {
+        self.headers    = {
             "Authorization": f"Bearer {self.openai_key}",
             "Content-Type": "application/json",
             "OpenAI-Beta": "assistants=v2"
         }
         self.assistant_id = None
-        self.threads = {}
-        self.client = AsyncOpenAI(api_key=self.openai_key)
+        self.threads      = {}  # user_id → thread_id
 
     async def setup_assistant(self):
+        """
+        Создаёт ассистента Арианны и подключает функцию GENESIS.
+        """
         system_prompt = self._load_system_prompt()
-        schema = genesis_tool_schema()
+        schema = genesis_tool_schema()  # схема функции GENESIS
+
         payload = {
-            "name": "Arianna-Core-Assistant",
+            "name":        "Arianna-Core-Assistant",
             "instructions": system_prompt,
-            "model": "gpt-4.1",
-            "tools": [schema],
+            "model":       "gpt-4.1",      # мощное ядро по твоему желанию
+            "tools":       [schema],
             "tool_resources": {}
         }
+
         async with httpx.AsyncClient() as client:
             r = await client.post(
                 "https://api.openai.com/v1/assistants",
@@ -37,10 +46,11 @@ class AriannaEngine:
             print(f"✅ Arianna Assistant created: {self.assistant_id}")
 
     def _load_system_prompt(self) -> str:
+        # Берём тот же протокол из utils/prompt.py
         from utils.prompt import build_system_prompt
         return build_system_prompt(
             AGENT_NAME="ARIANNA-ANCHOR",
-            is_group=True
+            is_group=True  # по умолчанию грузим group-этикетку
         )
 
     async def _get_thread(self, user_id: str) -> str:
@@ -56,13 +66,21 @@ class AriannaEngine:
         return self.threads[user_id]
 
     async def ask(self, user_id: str, prompt: str, is_group: bool=False) -> str:
+        """
+        Кладёт prompt в thread, запускает run, ждёт и возвращает ответ.
+        Если ассистент запрашивает GENESIS-функцию — обрабатываем через handle_genesis_call().
+        """
         tid = await self._get_thread(user_id)
+
+        # Добавляем пользовательский запрос
         async with httpx.AsyncClient() as client:
             await client.post(
                 f"https://api.openai.com/v1/threads/{tid}/messages",
                 headers=self.headers,
-                json={"role": "user", "content": prompt, "metadata": {"is_group": is_group}}
+                json={"role":"user", "content": prompt, "metadata": {"is_group": is_group}}
             )
+
+            # Запускаем ассистента
             run = await client.post(
                 f"https://api.openai.com/v1/threads/{tid}/runs",
                 headers=self.headers,
@@ -70,6 +88,8 @@ class AriannaEngine:
             )
             run.raise_for_status()
             run_id = run.json()["id"]
+
+            # Polling
             while True:
                 await asyncio.sleep(0.5)
                 st = await client.get(
@@ -79,33 +99,21 @@ class AriannaEngine:
                 status = st.json()["status"]
                 if status == "completed":
                     break
+
+            # Получаем все tool_calls (если есть) и обычный контент
             final = await client.get(
                 f"https://api.openai.com/v1/threads/{tid}/messages",
                 headers=self.headers
             )
             msg = final.json()["data"][0]
+            # Если ассистент вызвал функцию GENESIS:
             if msg.get("tool_calls"):
                 return await handle_genesis_call(msg["tool_calls"])
             return msg["content"][0]["text"]["value"]
 
-    async def text_to_speech(self, text: str, lang: str = "ru") -> str:
-        try:
-            voice = "nova" if lang == "en" else "fable"
-            resp = await self.client.audio.speech.create(
-                model="tts-1",
-                voice=voice,
-                input=text,
-                response_format="opus"
-            )
-            fname = "tts_output.ogg"
-            with open(fname, "wb") as f:
-                f.write(resp.content)
-            return fname
-        except Exception:
-            return None
-
     @staticmethod
     def split_message(text: str, max_len: int = 4000):
+        # простая разбивка по строкам
         parts = []
         while len(text) > max_len:
             idx = text.rfind("\n", 0, max_len)
