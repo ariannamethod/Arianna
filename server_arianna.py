@@ -4,9 +4,11 @@ import asyncio
 import random
 import sys
 print(f"Files: {os.listdir('.')}", file=sys.stderr)
+print(f"Importing aiohttp...", file=sys.stderr)
+from aiohttp import web
+print(f"Imported aiohttp", file=sys.stderr)
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils.chat_action import ChatActionSender
-from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from utils.arianna_engine import AriannaEngine
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
@@ -87,6 +89,7 @@ async def all_messages(m: types.Message):
 async def main():
     print("Starting Arianna setup...", file=sys.stderr)
     await engine.setup_assistant()
+    print("Creating app...", file=sys.stderr)
     app = web.Application()
     path = f"/webhook/{BOT_TOKEN}"
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=path)
