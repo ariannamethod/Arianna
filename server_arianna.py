@@ -2,6 +2,8 @@ import os
 import re
 import asyncio
 import random
+import sys
+print(f"Files: {os.listdir('.')}", file=sys.stderr)
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils.chat_action import ChatActionSender
 from aiohttp import web
