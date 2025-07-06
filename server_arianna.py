@@ -85,6 +85,7 @@ async def all_messages(m: types.Message):
             await m.answer(chunk)
 
 async def main():
+    print("Starting Arianna setup...", file=sys.stderr)
     await engine.setup_assistant()
     app = web.Application()
     path = f"/webhook/{BOT_TOKEN}"
@@ -95,8 +96,9 @@ async def main():
     port = int(os.getenv("PORT", 8000))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f"🚀 Arianna webhook started on port {port}")
+    print(f"🚀 Arianna webhook started on port {port}", file=sys.stderr)
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
+    print("Running server_arianna.py...", file=sys.stderr)
     asyncio.run(main())
