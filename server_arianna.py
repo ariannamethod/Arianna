@@ -40,7 +40,6 @@ async def main():
     # создаём ассистента и любые ресурс-ассеты (vector store, функции)
     await engine.setup_assistant()
 
-    # запускаем вебхук
     app = web.Application()
     path = f"/webhook/{BOT_TOKEN}"
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=path)
