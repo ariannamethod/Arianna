@@ -46,5 +46,4 @@ async def handle_genesis_call(tool_calls):
         text = "Opinion posted to group."
     else:
         inst.oleg_personal_message()
-        text = "Personal message sent to Oleg."
-    return text
+        text = "Personal message sent to Oleg."    return text
