@@ -52,5 +52,4 @@ async def main():
     print(f"🚀 Arianna webhook started on port {port}")
     await asyncio.Event().wait()
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == "__main__":    asyncio.run(main())
