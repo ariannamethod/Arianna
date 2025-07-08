@@ -1,7 +1,9 @@
+import os
+import asyncio
+
+
 def genesis_tool_schema():
-    """
-    Описание GENESIS как инструмента для Assistants API.
-    """
+    """Описание GENESIS как инструмента для Assistants API."""
     return {
         "type": "function",
         "function": {
@@ -21,12 +23,11 @@ def genesis_tool_schema():
         }
     }
 
+
 async def handle_genesis_call(tool_calls):
-    """
-    Получает tool_calls из ответа ассистента и обрабатывает каждый:
-    вызывает AriannaGenesis.run() по режиму и возвращает сгенерированный текст.
-    """
+    """Получает tool_calls из ответа ассистента и запускает нужный такт Genesis."""
     from utils.genesis import AriannaGenesis
+
     inst = AriannaGenesis(
         group_id=os.getenv("GROUP_ID"),
         oleg_id=os.getenv("CREATOR_CHAT_ID"),
@@ -34,17 +35,17 @@ async def handle_genesis_call(tool_calls):
         pinecone_index=os.getenv("PINECONE_INDEX"),
         chronicle_path=os.getenv("CHRONICLE_PATH")
     )
-    # Берём первый вызов:
+
     call = tool_calls[0]
     args = call["function"]["arguments"]
     mode = args.get("mode", "impression")
-    # Генерим синхронно нужное действие:
+
     if mode == "impression":
-        text = inst._generate_impression("", "")  # нужные параметры можно расширить
+        text = inst._generate_impression("", "")
     elif mode == "opinion":
-        inst.opinions_group_post()
+        await asyncio.to_thread(inst.opinions_group_post)
         text = "Opinion posted to group."
     else:
-        inst.oleg_personal_message()
+        await asyncio.to_thread(inst.oleg_personal_message)
         text = "Personal message sent to Oleg."
     return text
