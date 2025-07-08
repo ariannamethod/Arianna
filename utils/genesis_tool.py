@@ -1,3 +1,5 @@
+import os
+
 def genesis_tool_schema():
     """
     Описание GENESIS как инструмента для Assistants API.
