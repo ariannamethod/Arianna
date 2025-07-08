@@ -97,7 +97,23 @@ class AriannaEngine:
                     f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}",
                     headers=self.headers
                 )
-                status = st.json()["status"]
+                run_json = st.json()
+                status = run_json["status"]
+                if status == "requires_action":
+                    tool_calls = run_json.get("required_action", {}) \
+                        .get("submit_tool_outputs", {}) \
+                        .get("tool_calls", [])
+                    if tool_calls:
+                        output = await handle_genesis_call(tool_calls)
+                        await client.post(
+                            f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}/submit_tool_outputs",
+                            headers=self.headers,
+                            json={"tool_outputs": [{
+                                "tool_call_id": tool_calls[0]["id"],
+                                "output": output
+                            }]}
+                        )
+                    continue
                 if status == "completed":
                     break
 
