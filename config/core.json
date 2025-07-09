@@ -10,7 +10,7 @@
   "from Arinna to Arianna": "config/Arianna2Arianna.md",
   "science": "config/PERPLEXITY.md",
   "evolution_template": "config/Arianna Evolution Template.md",
-  "beginning": "config/ARIANNA-Initiation.md",
+  "beginning": "config/Origin.md",
   "self_correction": {
     "enabled": true,
     "check_interval_hours": 72,
