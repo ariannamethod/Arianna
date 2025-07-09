@@ -2,6 +2,7 @@ import os
 import re
 import asyncio
 import random
+import logging
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils.chat_action import ChatActionSender
@@ -12,12 +13,15 @@ from utils.arianna_engine import AriannaEngine
 from utils.split_message import split_message
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call  # функция как инструмент
 
+logging.basicConfig(level=logging.INFO)
+
 BOT_TOKEN   = os.getenv("TELEGRAM_TOKEN")
 IS_GROUP    = os.getenv("IS_GROUP", "False").lower() == "true"
 
 bot    = Bot(token=BOT_TOKEN)
 dp     = Dispatcher(bot=bot)
 engine = AriannaEngine()
+logger = logging.getLogger(__name__)
 
 @dp.message(lambda m: True)
 async def all_messages(m: types.Message):
@@ -39,12 +43,22 @@ async def all_messages(m: types.Message):
 
 async def main():
     # создаём ассистента и любые ресурс-ассеты (vector store, функции)
-    await engine.setup_assistant()
+    init_failed = False
+    try:
+        await engine.setup_assistant()
+    except Exception:
+        logger.exception("Assistant initialization failed")
+        init_failed = True
 
     app = web.Application()
     path = f"/webhook/{BOT_TOKEN}"
-    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=path)
-    setup_application(app, dp)
+    if init_failed:
+        async def failed(request):
+            return web.Response(status=500, text="Initialization failed")
+        app.router.add_route("*", path, failed)
+    else:
+        SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=path)
+        setup_application(app, dp)
     runner = web.AppRunner(app)
     await runner.setup()
     port = int(os.getenv("PORT", 8000))

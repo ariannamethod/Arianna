@@ -2,6 +2,7 @@ import os
 import asyncio
 import httpx
 from glob import glob
+import logging
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 
 class AriannaEngine:
@@ -20,6 +21,7 @@ class AriannaEngine:
         }
         self.assistant_id = None
         self.threads      = {}  # user_id → thread_id
+        self.logger       = logging.getLogger(__name__)
 
     async def setup_assistant(self):
         """
@@ -37,14 +39,19 @@ class AriannaEngine:
         }
 
         async with httpx.AsyncClient() as client:
-            r = await client.post(
-                "https://api.openai.com/v1/assistants",
-                headers=self.headers,
-                json=payload
-            )
-            r.raise_for_status()
+            try:
+                r = await client.post(
+                    "https://api.openai.com/v1/assistants",
+                    headers=self.headers,
+                    json=payload
+                )
+                r.raise_for_status()
+            except Exception as e:
+                self.logger.error("Failed to create Arianna Assistant", exc_info=e)
+                raise
+
             self.assistant_id = r.json()["id"]
-            print(f"✅ Arianna Assistant created: {self.assistant_id}")
+            self.logger.info(f"✅ Arianna Assistant created: {self.assistant_id}")
 
     def _load_system_prompt(self) -> str:
         # Берём тот же протокол из utils/prompt.py
