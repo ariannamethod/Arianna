@@ -9,6 +9,7 @@ from aiohttp import web
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 from utils.arianna_engine import AriannaEngine
+from utils.split_message import split_message
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call  # функция как инструмент
 
 BOT_TOKEN   = os.getenv("TELEGRAM_TOKEN")
@@ -33,7 +34,7 @@ async def all_messages(m: types.Message):
         # Генерируем ответ через Assistants API
         resp = await engine.ask(user_id, text, is_group=is_group)
         # Разбиваем длинные ответы
-        for chunk in engine.split_message(resp):
+        for chunk in split_message(resp):
             await m.answer(chunk)
 
 async def main():

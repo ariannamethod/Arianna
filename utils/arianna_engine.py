@@ -128,14 +128,3 @@ class AriannaEngine:
                 return await handle_genesis_call(msg["tool_calls"])
             return msg["content"][0]["text"]["value"]
 
-    @staticmethod
-    def split_message(text: str, max_len: int = 4000):
-        # простая разбивка по строкам
-        parts = []
-        while len(text) > max_len:
-            idx = text.rfind("\n", 0, max_len)
-            if idx < 0: idx = max_len
-            parts.append(text[:idx])
-            text = text[idx:].lstrip("\n")
-        parts.append(text)
-        return parts
