@@ -83,11 +83,16 @@ class AriannaEngine:
 
         # Добавляем пользовательский запрос
         async with httpx.AsyncClient() as client:
-            await client.post(
-                f"https://api.openai.com/v1/threads/{tid}/messages",
-                headers=self.headers,
-                json={"role":"user", "content": prompt, "metadata": {"is_group": is_group}}
-            )
+            try:
+                msg = await client.post(
+                    f"https://api.openai.com/v1/threads/{tid}/messages",
+                    headers=self.headers,
+                    json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}}
+                )
+                msg.raise_for_status()
+            except Exception as e:
+                self.logger.error("Failed to post user message", exc_info=e)
+                raise
 
             # Запускаем ассистента
             run = await client.post(
