@@ -3,6 +3,7 @@ import asyncio
 import httpx
 import logging
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
+from utils.thread_store import load_threads, save_threads
 
 class AriannaEngine:
     """
@@ -20,7 +21,7 @@ class AriannaEngine:
             "OpenAI-Beta": "assistants=v2"
         }
         self.assistant_id = None
-        self.threads      = {}  # user_id → thread_id
+        self.threads      = load_threads()  # user_id → thread_id
 
     async def setup_assistant(self):
         """
@@ -62,8 +63,8 @@ class AriannaEngine:
             is_group=is_group
         )
 
-    async def _get_thread(self, user_id: str) -> str:
-        if user_id not in self.threads:
+    async def _get_thread(self, user_id: str, force_new: bool = False) -> str:
+        if force_new or user_id not in self.threads:
             async with httpx.AsyncClient() as client:
                 r = await client.post(
                     "https://api.openai.com/v1/threads",
@@ -72,6 +73,7 @@ class AriannaEngine:
                 )
                 r.raise_for_status()
                 self.threads[user_id] = r.json()["id"]
+                save_threads(self.threads)
         return self.threads[user_id]
 
     async def ask(self, user_id: str, prompt: str, is_group: bool=False) -> str:
@@ -84,6 +86,17 @@ class AriannaEngine:
         # Добавляем пользовательский запрос
         async with httpx.AsyncClient() as client:
             try:
+                msg = await client.post(
+                    f"https://api.openai.com/v1/threads/{tid}/messages",
+                    headers=self.headers,
+                    json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}}
+                )
+                msg.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                # Возможно thread устарел – создаём новый и пробуем снова
+                self.logger.warning("POST /messages failed, retrying with new thread", exc_info=e)
+                self.threads.pop(user_id, None)
+                tid = await self._get_thread(user_id, force_new=True)
                 msg = await client.post(
                     f"https://api.openai.com/v1/threads/{tid}/messages",
                     headers=self.headers,
