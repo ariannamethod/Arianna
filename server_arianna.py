@@ -17,6 +17,7 @@ from utils.arianna_engine import AriannaEngine
 from utils.split_message import split_message
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call  # функция как инструмент
 from utils.vector_store import semantic_search, vectorize_all_files
+from utils.text_helpers import extract_text_from_url
 
 BOT_TOKEN     = os.getenv("TELEGRAM_TOKEN")
 BOT_USERNAME  = ""  # will be set at startup
@@ -113,9 +114,24 @@ async def all_messages(m: types.Message):
     if is_group:
         thread_key = f"{m.chat.id}:{m.from_user.id}"
 
+    # Если в сообщении есть ссылки, подтягиваем текст
+    urls = re.findall(r"https?://\S+", text)
+    if urls:
+        snippets = []
+        for u in urls:
+            snippet = await extract_text_from_url(u)
+            if snippet:
+                snippets.append(f"Content from {u}:\n{snippet[:1000]}")
+        if snippets:
+            text_with_snippets = text + "\n\n" + "\n\n".join(snippets)
+        else:
+            text_with_snippets = text
+    else:
+        text_with_snippets = text
+
     async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
         # Генерируем ответ через Assistants API
-        resp = await engine.ask(thread_key, text, is_group=is_group)
+        resp = await engine.ask(thread_key, text_with_snippets, is_group=is_group)
         # Разбиваем длинные ответы
         for chunk in split_message(resp):
             await m.answer(chunk)

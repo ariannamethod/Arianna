@@ -79,6 +79,12 @@ Send `/search <query>` to look up relevant snippets from the Markdown files in
 `config/`. The bot responds with the closest matches. If you update the files,
 run `/index` to rebuild the search vectors.
 
+### Linked page previews
+
+If your message contains a URL, Arianna will fetch a short snippet from that
+page and include it in the prompt. This allows the bot to read and discuss
+linked articles or websites.
+
 ## Deployment
 
 A simple [Procfile](./Procfile) is provided for platforms such as Heroku:
