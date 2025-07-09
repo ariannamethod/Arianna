@@ -47,15 +47,11 @@ async def handle_genesis_call(tool_calls):
     # Генерим синхронно нужное действие:
 
     if mode == "impression":
-        text = inst._generate_impression("", "")  # нужные параметры можно расширить
         text = await asyncio.to_thread(inst._generate_impression, "", "")
     elif mode == "opinion":
-        inst.opinions_group_post()
         await asyncio.to_thread(inst.opinions_group_post)
         text = "Opinion posted to group."
     else:
-        inst.oleg_personal_message()
-        text = "Personal message sent to Oleg."    return text
         await asyncio.to_thread(inst.oleg_personal_message)
         text = "Personal message sent to Oleg."
 
