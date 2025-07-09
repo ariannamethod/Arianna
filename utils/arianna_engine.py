@@ -2,8 +2,10 @@ import os
 import asyncio
 import httpx
 import logging
+from httpx import HTTPStatusError
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 from utils.deepseek_search import call_deepseek
+from utils.thread_store import load_threads, save_threads
 
 class AriannaEngine:
     """
@@ -21,7 +23,7 @@ class AriannaEngine:
             "OpenAI-Beta": "assistants=v2"
         }
         self.assistant_id = None
-        self.threads      = {}  # user_id → thread_id
+        self.threads      = load_threads()  # user_id → thread_id
 
     async def setup_assistant(self):
         """
@@ -73,6 +75,7 @@ class AriannaEngine:
                 )
                 r.raise_for_status()
                 self.threads[user_id] = r.json()["id"]
+                save_threads(self.threads)
         return self.threads[user_id]
 
     async def ask(self, user_id: str, prompt: str, is_group: bool=False) -> str:
@@ -85,6 +88,16 @@ class AriannaEngine:
         # Добавляем пользовательский запрос
         async with httpx.AsyncClient() as client:
             try:
+                msg = await client.post(
+                    f"https://api.openai.com/v1/threads/{tid}/messages",
+                    headers=self.headers,
+                    json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}}
+                )
+                msg.raise_for_status()
+            except HTTPStatusError as e:
+                self.logger.warning("Thread corrupted, recreating", exc_info=e)
+                self.threads.pop(user_id, None)
+                tid = await self._get_thread(user_id)
                 msg = await client.post(
                     f"https://api.openai.com/v1/threads/{tid}/messages",
                     headers=self.headers,
