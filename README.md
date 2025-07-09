@@ -26,7 +26,7 @@ source .env
 python -m dotenv run -- python server_arianna.py
 ```
 
-Important variables include `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `OPENAI_API_KEY` and `DEEPSEEK_API_KEY`. Pinecone settings are also required if you use semantic search.
+Important variables include `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `OPENAI_API_KEY` and `DEEPSEEK_API_KEY`. Pinecone settings (`PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_ENV`) are also required if you use semantic search.
 Several optional variables fine‑tune the bot's behavior:
 
 - `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 120–600).
