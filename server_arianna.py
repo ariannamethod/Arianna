@@ -2,6 +2,7 @@ import os
 import re
 import asyncio
 import random
+import logging
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils.chat_action import ChatActionSender
@@ -11,6 +12,9 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from utils.arianna_engine import AriannaEngine
 from utils.split_message import split_message
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call  # функция как инструмент
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 BOT_TOKEN   = os.getenv("TELEGRAM_TOKEN")
 

@@ -3,6 +3,7 @@ import asyncio
 import httpx
 from glob import glob
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
+import logging
 
 class AriannaEngine:
     """
@@ -12,6 +13,7 @@ class AriannaEngine:
     """
 
     def __init__(self):
+        self.logger = logging.getLogger(__name__)
         self.openai_key = os.getenv("OPENAI_API_KEY")
         self.headers    = {
             "Authorization": f"Bearer {self.openai_key}",
@@ -36,20 +38,20 @@ class AriannaEngine:
             "tool_resources": {}
         }
 
-async with httpx.AsyncClient() as client:
-    try:
-        r = await client.post(
-            "https://api.openai.com/v1/assistants",
-            headers=self.headers,
-            json=payload
-        )
-        r.raise_for_status()
-    except Exception as e:
-        self.logger.error("Failed to create Arianna Assistant", exc_info=e)
-        raise
+        async with httpx.AsyncClient() as client:
+            try:
+                r = await client.post(
+                    "https://api.openai.com/v1/assistants",
+                    headers=self.headers,
+                    json=payload
+                )
+                r.raise_for_status()
+            except Exception as e:
+                self.logger.error("Failed to create Arianna Assistant", exc_info=e)
+                raise
 
-    self.assistant_id = r.json()["id"]
-    self.logger.info(f"✅ Arianna Assistant created: {self.assistant_id}")
+            self.assistant_id = r.json()["id"]
+            self.logger.info(f"✅ Arianna Assistant created: {self.assistant_id}")
 
     def _load_system_prompt(self) -> str:
         # Берём тот же протокол из utils/prompt.py
