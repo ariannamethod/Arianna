@@ -64,8 +64,11 @@ async def main():
         async def failed(request):
             return web.Response(status=500, text="Initialization failed")
         app.router.add_route("*", path, failed)
+        app.router.add_route("*", "/webhook", failed)
     else:
-        SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=path)
+        handler = SimpleRequestHandler(dispatcher=dp, bot=bot)
+        handler.register(app, path=path)
+        handler.register(app, path="/webhook")
         setup_application(app, dp)
 
     # Register health check routes
