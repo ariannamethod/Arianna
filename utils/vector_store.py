@@ -13,11 +13,21 @@ EMBED_DIM = 1536  # For OpenAI ada-002
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX")
 
-pc = Pinecone(api_key=PINECONE_API_KEY)
-if PINECONE_INDEX not in [x["name"] for x in pc.list_indexes()]:
-    pc.create_index(name=PINECONE_INDEX, dimension=EMBED_DIM, metric="cosine")
+pc = None
+vector_index = None
 
-vector_index = pc.Index(PINECONE_INDEX)
+
+def init_pinecone():
+    """Initialize Pinecone connection if it hasn't been already."""
+    global pc, vector_index
+    if pc is not None and vector_index is not None:
+        return
+    if not PINECONE_API_KEY or not PINECONE_INDEX:
+        raise RuntimeError("PINECONE_API_KEY and PINECONE_INDEX must be set")
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    if PINECONE_INDEX not in [x["name"] for x in pc.list_indexes()]:
+        pc.create_index(name=PINECONE_INDEX, dimension=EMBED_DIM, metric="cosine")
+    vector_index = pc.Index(PINECONE_INDEX)
 
 def file_hash(fname):
     with open(fname, "rb") as f:
@@ -63,6 +73,7 @@ def chunk_text(text, chunk_size=900, overlap=120):
     return chunks
 
 async def vectorize_all_files(openai_api_key, force=False, on_message=None):
+    init_pinecone()
     current = scan_files()
     previous = load_vector_meta()
     changed = [f for f in current if (force or current[f] != previous.get(f))]
@@ -111,6 +122,7 @@ async def vectorize_all_files(openai_api_key, force=False, on_message=None):
     return {"upserted": upserted_ids, "deleted": deleted_ids}
 
 async def semantic_search(query, openai_api_key, top_k=5):
+    init_pinecone()
     emb = await safe_embed(query, openai_api_key)
     res = vector_index.query(vector=emb, top_k=top_k, include_metadata=True)
     chunks = []
