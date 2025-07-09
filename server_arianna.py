@@ -17,7 +17,8 @@ from utils.arianna_engine import AriannaEngine
 from utils.split_message import split_message
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call  # функция как инструмент
 
-BOT_TOKEN   = os.getenv("TELEGRAM_TOKEN")
+BOT_TOKEN     = os.getenv("TELEGRAM_TOKEN")
+BOT_USERNAME  = ""  # will be set at startup
 
 bot    = Bot(token=BOT_TOKEN)
 dp     = Dispatcher(bot=bot)
@@ -36,9 +37,25 @@ async def all_messages(m: types.Message):
     user_id = str(m.from_user.id)
     text    = m.text or ""
 
-    # Просто затычка спама/пингов — оставляем старую логику
+    # Простая проверка упоминания бота в группах
     is_group = getattr(m.chat, "type", "") in ("group", "supergroup")
-    mentioned = not is_group or bool(re.search(r"\barianna\b", text, re.I))
+
+    mentioned = False
+    if not is_group:
+        mentioned = True
+    else:
+        if re.search(r"\b(arianna|арианна)\b", text, re.I):
+            mentioned = True
+        elif BOT_USERNAME and f"@{BOT_USERNAME}".lower() in text.lower():
+            mentioned = True
+        elif m.entities:
+            for ent in m.entities:
+                if ent.type == "mention":
+                    ent_text = text[ent.offset: ent.offset + ent.length]
+                    if ent_text[1:].lower() == BOT_USERNAME:
+                        mentioned = True
+                        break
+
     if not mentioned:
         return
 
@@ -50,7 +67,11 @@ async def all_messages(m: types.Message):
             await m.answer(chunk)
 
 async def main():
-    # создаём ассистента и любые ресурс‑ассеты
+    global BOT_USERNAME
+    # получаем имя бота и создаём ассистента и любые ресурс‑ассеты
+    me = await bot.get_me()
+    BOT_USERNAME = (me.username or "").lower()
+
     init_failed = False
     try:
         await engine.setup_assistant()
