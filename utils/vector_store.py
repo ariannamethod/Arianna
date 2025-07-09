@@ -12,6 +12,7 @@ EMBED_DIM = 1536  # For OpenAI ada-002
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX")
+PINECONE_ENV = os.getenv("PINECONE_ENV")
 
 pc = None
 vector_index = None
@@ -24,7 +25,10 @@ def init_pinecone():
         return
     if not PINECONE_API_KEY or not PINECONE_INDEX:
         raise RuntimeError("PINECONE_API_KEY and PINECONE_INDEX must be set")
-    pc = Pinecone(api_key=PINECONE_API_KEY)
+    kwargs = {"api_key": PINECONE_API_KEY}
+    if PINECONE_ENV:
+        kwargs["environment"] = PINECONE_ENV
+    pc = Pinecone(**kwargs)
     if PINECONE_INDEX not in [x["name"] for x in pc.list_indexes()]:
         pc.create_index(name=PINECONE_INDEX, dimension=EMBED_DIM, metric="cosine")
     vector_index = pc.Index(PINECONE_INDEX)
