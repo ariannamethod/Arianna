@@ -27,6 +27,13 @@ python -m dotenv run -- python server_arianna.py
 ```
 
 Important variables include `TELEGRAM_TOKEN`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, and the Pinecone settings. `PORT` controls which port the webhook listens on (defaults to 8000).
+Several optional variables fine‑tune the bot's behavior:
+
+- `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 120–600).
+- `PRIVATE_DELAY_MIN`/`PRIVATE_DELAY_MAX` – range for private chats (default 30–180).
+- `SKIP_SHORT_PROB` – chance to ignore very short or non‑question messages (default 0.5).
+- `FOLLOWUP_PROB` – probability of sending a follow‑up later (default 0.2).
+- `FOLLOWUP_DELAY_MIN`/`FOLLOWUP_DELAY_MAX` – delay range for follow‑ups in seconds (default 900–7200).
 
 ## Running the bot
 
@@ -91,6 +98,14 @@ OpenAI Whisper and answered with text-to-speech audio.
 When a message includes an `https://` link, Arianna fetches a short excerpt of
 that page and appends it to your prompt before generating a reply. This gives
 the model more context from the referenced site.
+
+### Delayed replies and follow-ups
+
+Arianna purposely waits a little before answering. The delay range depends on
+the chat type and is configurable via the environment variables listed above.
+Short statements or messages without a question mark are ignored about half of
+the time. Occasionally she will send a brief follow‑up message referencing the
+earlier conversation.
 
 ## Deployment
 
