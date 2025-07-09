@@ -2,6 +2,9 @@ import os
 import re
 import asyncio
 import random
+import logging
+
+logger = logging.getLogger(__name__)
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils.chat_action import ChatActionSender
@@ -63,10 +66,6 @@ async def main():
         SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=path)
         setup_application(app, dp)
 
-    app = web.Application()
-    path = f"/webhook/{BOT_TOKEN}"
-    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=path)
-    setup_application(app, dp)
     # Register health check routes
     app.router.add_get("/healthz", healthz)
     app.router.add_get("/status", status)
