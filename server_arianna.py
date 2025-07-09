@@ -13,7 +13,6 @@ from utils.split_message import split_message
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call  # функция как инструмент
 
 BOT_TOKEN   = os.getenv("TELEGRAM_TOKEN")
-IS_GROUP    = os.getenv("IS_GROUP", "False").lower() == "true"
 
 bot    = Bot(token=BOT_TOKEN)
 dp     = Dispatcher(bot=bot)
