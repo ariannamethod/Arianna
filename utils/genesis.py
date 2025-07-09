@@ -11,6 +11,7 @@ CREATOR_CHAT_ID = os.environ.get("CREATOR_CHAT_ID", "YOUR_TELEGRAM_USER_ID")
 PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
 PINECONE_INDEX = os.environ.get("PINECONE_INDEX")
 CHRONICLE_PATH = os.environ.get("CHRONICLE_PATH", "./config/chronicle.log")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 
 # — Темы для поиска
 SEARCH_TOPICS = [
@@ -259,15 +260,26 @@ class AriannaGenesis:
         except Exception:
             pass
 
+    def _async_send(self, chat_id, text):
+        if not TELEGRAM_TOKEN:
+            self._log("[AriannaGenesis] TELEGRAM_TOKEN is not set, cannot send message")
+            return
+
+        def _send():
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+            payload = {"chat_id": chat_id, "text": text}
+            try:
+                requests.post(url, data=payload, timeout=10)
+            except Exception as e:
+                self._log(f"[AriannaGenesis] send_message error: {e}")
+
+        threading.Thread(target=_send, daemon=True).start()
+
     def _send_to_group(self, text):
-        # TODO: интегрируй с Telegram API, пример ниже:
-        print(f"[Group:{self.group_id}]: {text}")
-        # send_telegram_message(self.group_id, text)
+        self._async_send(self.group_id, text)
 
     def _send_direct(self, user_id, text):
-        # TODO: интегрируй с Telegram API, пример ниже:
-        print(f"[DM to {user_id}]: {text}")
-        # send_telegram_message(user_id, text)
+        self._async_send(user_id, text)
 
 # === Для запуска в server.py (синхронно!) ===
 # genesis = AriannaGenesis(GROUP_ID, CREATOR_CHAT_ID, PINECONE_API_KEY, PINECONE_INDEX, CHRONICLE_PATH)
