@@ -40,8 +40,7 @@ This launches an aiohttp web server and keeps running until interrupted.
 
 ### Group chat behavior
 
-When used in a group, Arianna responds only when you address her explicitly.
-The following triggers are recognized:
+When used in a group, Arianna responds only when you address her explicitly or when you reply to one of her messages. The following triggers are recognized:
 
 - `arianna`
 - `Арианна`
