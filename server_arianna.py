@@ -19,6 +19,7 @@ from utils.genesis_tool import genesis_tool_schema, handle_genesis_call  # фу�
 
 BOT_TOKEN     = os.getenv("TELEGRAM_TOKEN")
 BOT_USERNAME  = ""  # will be set at startup
+BOT_ID        = 0   # will be set at startup
 
 bot    = Bot(token=BOT_TOKEN)
 dp     = Dispatcher(bot=bot)
@@ -39,6 +40,11 @@ async def all_messages(m: types.Message):
 
     # Простая проверка упоминания бота в группах
     is_group = getattr(m.chat, "type", "") in ("group", "supergroup")
+    is_reply = (
+        m.reply_to_message
+        and m.reply_to_message.from_user
+        and m.reply_to_message.from_user.id == BOT_ID
+    )
 
     mentioned = False
     if not is_group:
@@ -56,7 +62,10 @@ async def all_messages(m: types.Message):
                         mentioned = True
                         break
 
-    if not mentioned:
+    if is_reply:
+        mentioned = True
+
+    if not (mentioned or is_reply):
         return
 
     async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
@@ -67,10 +76,11 @@ async def all_messages(m: types.Message):
             await m.answer(chunk)
 
 async def main():
-    global BOT_USERNAME
+    global BOT_USERNAME, BOT_ID
     # получаем имя бота и создаём ассистента и любые ресурс‑ассеты
     me = await bot.get_me()
     BOT_USERNAME = (me.username or "").lower()
+    BOT_ID = me.id
 
     init_failed = False
     try:

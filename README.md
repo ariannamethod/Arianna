@@ -46,6 +46,8 @@ When used in a group, Arianna responds only when you address her explicitly or w
 - `Арианна`
 - `@<bot_username>`
 
+Replying to one of Arianna's messages counts as addressing her as well.
+
 The username is retrieved automatically from Telegram, so no additional
 configuration is required.
 
