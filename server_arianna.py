@@ -80,9 +80,13 @@ async def all_messages(m: types.Message):
     if not (mentioned or is_reply):
         return
 
+    thread_key = user_id
+    if is_group:
+        thread_key = f"{m.chat.id}:{m.from_user.id}"
+
     async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
         # Генерируем ответ через Assistants API
-        resp = await engine.ask(user_id, text, is_group=is_group)
+        resp = await engine.ask(thread_key, text, is_group=is_group)
         # Разбиваем длинные ответы
         for chunk in split_message(resp):
             await m.answer(chunk)
