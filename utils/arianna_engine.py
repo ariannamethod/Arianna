@@ -6,6 +6,7 @@ import time
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 from utils.deepseek_search import call_deepseek
 from utils.journal import log_event
+from utils.thread_store import load_threads, save_threads
 
 class AriannaEngine:
     """
@@ -23,7 +24,7 @@ class AriannaEngine:
             "OpenAI-Beta": "assistants=v2"
         }
         self.assistant_id = None
-        self.threads      = {}  # user_id → thread_id
+        self.threads      = load_threads()  # user_id → thread_id
 
     async def setup_assistant(self):
         """
@@ -76,6 +77,7 @@ class AriannaEngine:
                 )
                 r.raise_for_status()
                 self.threads[key] = r.json()["id"]
+            save_threads(self.threads)
         return self.threads[key]
 
     async def ask(self, thread_key: str, prompt: str, is_group: bool=False) -> str:
@@ -96,7 +98,19 @@ class AriannaEngine:
                 msg.raise_for_status()
             except Exception as e:
                 self.logger.error("Failed to post user message", exc_info=e)
-                raise
+                # Try to recreate the thread in case the ID became invalid
+                self.threads.pop(thread_key, None)
+                tid = await self._get_thread(thread_key)
+                try:
+                    msg = await client.post(
+                        f"https://api.openai.com/v1/threads/{tid}/messages",
+                        headers=self.headers,
+                        json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}}
+                    )
+                    msg.raise_for_status()
+                except Exception as e2:
+                    self.logger.error("Failed to post user message after recreating thread", exc_info=e2)
+                    raise
 
             # Запускаем ассистента
             run = await client.post(
