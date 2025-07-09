@@ -36,15 +36,20 @@ class AriannaEngine:
             "tool_resources": {}
         }
 
-        async with httpx.AsyncClient() as client:
-            r = await client.post(
-                "https://api.openai.com/v1/assistants",
-                headers=self.headers,
-                json=payload
-            )
-            r.raise_for_status()
-            self.assistant_id = r.json()["id"]
-            print(f"✅ Arianna Assistant created: {self.assistant_id}")
+async with httpx.AsyncClient() as client:
+    try:
+        r = await client.post(
+            "https://api.openai.com/v1/assistants",
+            headers=self.headers,
+            json=payload
+        )
+        r.raise_for_status()
+    except Exception as e:
+        self.logger.error("Failed to create Arianna Assistant", exc_info=e)
+        raise
+
+    self.assistant_id = r.json()["id"]
+    self.logger.info(f"✅ Arianna Assistant created: {self.assistant_id}")
 
     def _load_system_prompt(self) -> str:
         # Берём тот же протокол из utils/prompt.py
