@@ -1,12 +1,17 @@
 import os
 import aiohttp
 
-# You can add multiple keys for rotation if needed
-DEEPSEEK_KEYS = [os.getenv("DEEPSEEK_API_KEY")]
+# You can add multiple keys for rotation if needed. If no key is provided,
+# the list will be empty and DeepSeek calls are disabled.
+deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_KEYS = [deepseek_key] if deepseek_key else []
+DEEPSEEK_ENABLED = bool(deepseek_key)
 current_key_idx = 0
 
 def rotate_deepseek_key():
     """Rotate to the next DeepSeek API key (for use if multiple keys are provided)."""
+    if not DEEPSEEK_KEYS:
+        return None
     global current_key_idx
     current_key_idx = (current_key_idx + 1) % len(DEEPSEEK_KEYS)
     return DEEPSEEK_KEYS[current_key_idx]
@@ -16,6 +21,8 @@ async def call_deepseek(messages):
     Send chat messages to DeepSeek API and return the response content.
     Automatically rotates key on 401 Unauthorized.
     """
+    if not DEEPSEEK_KEYS:
+        return "DeepSeek API key not configured"
     global current_key_idx
     key = DEEPSEEK_KEYS[current_key_idx]
     url = "https://api.deepseek.com/v1/chat/completions"
