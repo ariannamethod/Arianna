@@ -79,6 +79,13 @@ Send `/search <query>` to look up relevant snippets from the Markdown files in
 `config/`. The bot responds with the closest matches. If you update the files,
 run `/index` to rebuild the search vectors.
 
+### Voice mode
+
+Send `/voiceon` in a chat to receive Arianna's answers as voice notes.
+Use `/voiceoff` to switch back to text replies. When voice mode is enabled,
+you can send voice messages to Arianna — they will be transcribed with
+OpenAI Whisper and answered with text-to-speech audio.
+
 ## Deployment
 
 A simple [Procfile](./Procfile) is provided for platforms such as Heroku:

@@ -3,6 +3,10 @@ import re
 import asyncio
 import random
 import logging
+import tempfile
+
+import openai
+from pydub import AudioSegment
 
 logging.basicConfig(level=logging.INFO)
 
@@ -25,9 +29,40 @@ BOT_ID        = 0   # will be set at startup
 bot    = Bot(token=BOT_TOKEN)
 dp     = Dispatcher(bot=bot)
 engine = AriannaEngine()
+openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 DEEPSEEK_CMD = "/ds"
 SEARCH_CMD = "/search"
 INDEX_CMD = "/index"
+VOICE_ON_CMD = "/voiceon"
+VOICE_OFF_CMD = "/voiceoff"
+VOICE_ENABLED = {}
+
+
+async def transcribe_voice(file_path: str) -> str:
+    """Transcribe an audio file using OpenAI Whisper."""
+    with open(file_path, "rb") as f:
+        resp = await openai_client.audio.transcriptions.create(
+            model="whisper-1",
+            file=f,
+        )
+    return resp.text
+
+
+async def synthesize_voice(text: str) -> str:
+    """Synthesize speech from text using OpenAI TTS and return OGG path."""
+    mp3_fd = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    ogg_fd = tempfile.NamedTemporaryFile(delete=False, suffix=".ogg")
+    mp3_fd.close()
+    ogg_fd.close()
+    resp = await openai_client.audio.speech.create(
+        model="tts-1",
+        voice="alloy",
+        input=text,
+    )
+    resp.stream_to_file(mp3_fd.name)
+    AudioSegment.from_file(mp3_fd.name).export(ogg_fd.name, format="ogg", codec="libopus")
+    os.remove(mp3_fd.name)
+    return ogg_fd.name
 
 # --- health check routes ---
 async def healthz(request):
@@ -36,6 +71,26 @@ async def healthz(request):
 
 async def status(request):
     return web.Response(text="running")
+
+
+@dp.message(lambda m: m.voice)
+async def voice_messages(m: types.Message):
+    is_group = getattr(m.chat, "type", "") in ("group", "supergroup")
+    user_id = str(m.from_user.id)
+    thread_key = f"{m.chat.id}:{m.from_user.id}" if is_group else user_id
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as tmp:
+        await bot.download(m.voice.file_id, tmp.name)
+    text = await transcribe_voice(tmp.name)
+    os.remove(tmp.name)
+    async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
+        resp = await engine.ask(thread_key, text, is_group=is_group)
+        if VOICE_ENABLED.get(m.chat.id):
+            voice_path = await synthesize_voice(resp)
+            await m.answer_voice(types.FSInputFile(voice_path), caption=resp[:1024])
+            os.remove(voice_path)
+        else:
+            for chunk in split_message(resp):
+                await m.answer(chunk)
 
 @dp.message(lambda m: True)
 async def all_messages(m: types.Message):
@@ -66,6 +121,15 @@ async def all_messages(m: types.Message):
 
             await vectorize_all_files(engine.openai_key, force=True, on_message=sender)
             await m.answer("Indexing complete.")
+        return
+
+    if text.strip().lower() == VOICE_ON_CMD:
+        VOICE_ENABLED[m.chat.id] = True
+        await m.answer("Voice responses enabled")
+        return
+    if text.strip().lower() == VOICE_OFF_CMD:
+        VOICE_ENABLED[m.chat.id] = False
+        await m.answer("Voice responses disabled")
         return
 
     # Direct DeepSeek call
@@ -116,9 +180,13 @@ async def all_messages(m: types.Message):
     async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
         # Генерируем ответ через Assistants API
         resp = await engine.ask(thread_key, text, is_group=is_group)
-        # Разбиваем длинные ответы
-        for chunk in split_message(resp):
-            await m.answer(chunk)
+        if VOICE_ENABLED.get(m.chat.id):
+            voice_path = await synthesize_voice(resp)
+            await m.answer_voice(types.FSInputFile(voice_path), caption=resp[:1024])
+            os.remove(voice_path)
+        else:
+            for chunk in split_message(resp):
+                await m.answer(chunk)
 
 async def main():
     global BOT_USERNAME, BOT_ID
