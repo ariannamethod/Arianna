@@ -49,9 +49,10 @@ class AriannaEngine:
     def _load_system_prompt(self) -> str:
         # Берём тот же протокол из utils/prompt.py
         from utils.prompt import build_system_prompt
+        is_group = os.getenv("IS_GROUP", "False").lower() == "true"
         return build_system_prompt(
             AGENT_NAME="ARIANNA-ANCHOR",
-            is_group=True  # по умолчанию грузим group-этикетку
+            is_group=is_group
         )
 
     async def _get_thread(self, user_id: str) -> str:
