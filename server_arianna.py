@@ -16,6 +16,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from utils.arianna_engine import AriannaEngine
 from utils.split_message import split_message
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call  # функция как инструмент
+from utils.vector_store import semantic_search, vectorize_all_files
 
 BOT_TOKEN     = os.getenv("TELEGRAM_TOKEN")
 BOT_USERNAME  = ""  # will be set at startup
@@ -25,6 +26,8 @@ bot    = Bot(token=BOT_TOKEN)
 dp     = Dispatcher(bot=bot)
 engine = AriannaEngine()
 DEEPSEEK_CMD = "/ds"
+SEARCH_CMD = "/search"
+INDEX_CMD = "/index"
 
 # --- health check routes ---
 async def healthz(request):
@@ -38,6 +41,32 @@ async def status(request):
 async def all_messages(m: types.Message):
     user_id = str(m.from_user.id)
     text    = m.text or ""
+
+    # Semantic search
+    if text.strip().lower().startswith(SEARCH_CMD):
+        query = text.strip()[len(SEARCH_CMD):].lstrip()
+        if not query:
+            return
+        async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
+            chunks = await semantic_search(query, engine.openai_key)
+            if not chunks:
+                await m.answer("No relevant documents found.")
+            else:
+                for ch in chunks:
+                    for part in split_message(ch):
+                        await m.answer(part)
+        return
+
+    if text.strip().lower().startswith(INDEX_CMD):
+        async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
+            await m.answer("Indexing documents, please wait...")
+
+            async def sender(msg):
+                await m.answer(msg)
+
+            await vectorize_all_files(engine.openai_key, force=True, on_message=sender)
+            await m.answer("Indexing complete.")
+        return
 
     # Direct DeepSeek call
     if text.strip().lower().startswith(DEEPSEEK_CMD):

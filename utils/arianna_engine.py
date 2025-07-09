@@ -4,6 +4,7 @@ import httpx
 import logging
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 from utils.deepseek_search import call_deepseek
+from utils.journal import log_event
 
 class AriannaEngine:
     """
@@ -139,8 +140,16 @@ class AriannaEngine:
             msg = final.json()["data"][0]
             # Если ассистент вызвал функцию GENESIS:
             if msg.get("tool_calls"):
-                return await handle_genesis_call(msg["tool_calls"])
-            return msg["content"][0]["text"]["value"]
+                answer = await handle_genesis_call(msg["tool_calls"])
+            else:
+                answer = msg["content"][0]["text"]["value"]
+
+            log_event({
+                "user_id": user_id,
+                "prompt": prompt,
+                "reply": answer,
+            })
+            return answer
 
     async def deepseek_reply(self, prompt: str) -> str:
         """Отправить сообщение в DeepSeek и вернуть его ответ."""

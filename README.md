@@ -65,6 +65,18 @@ Use the `/ds` command followed by your prompt to send a message through
 DeepSeek. The regular conversation history with OpenAI is preserved when you
 use this command.
 
+### Journal logging
+
+Every successful answer from Arianna is recorded in `data/journal.json`. Each
+entry stores the user ID, your prompt and the reply text so you can keep track
+of the conversation history.
+
+### Semantic search
+
+Send `/search <query>` to look up relevant snippets from the Markdown files in
+`config/`. The bot responds with the closest matches. If you update the files,
+run `/index` to rebuild the search vectors.
+
 ## Deployment
 
 A simple [Procfile](./Procfile) is provided for platforms such as Heroku:
