@@ -111,7 +111,7 @@ async def all_messages(m: types.Message):
 
     thread_key = user_id
     if is_group:
-        thread_key = f"{m.chat.id}:{m.from_user.id}"
+        thread_key = str(m.chat.id)  # shared history for the whole group
 
     async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
         # Генерируем ответ через Assistants API
