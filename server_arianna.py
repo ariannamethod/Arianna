@@ -21,6 +21,7 @@ from utils.arianna_engine import AriannaEngine
 from utils.split_message import split_message
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call  # функция как инструмент
 from utils.vector_store import semantic_search, vectorize_all_files
+from utils.text_helpers import extract_text_from_url
 
 BOT_TOKEN     = os.getenv("TELEGRAM_TOKEN")
 BOT_USERNAME  = ""  # will be set at startup
@@ -36,6 +37,21 @@ INDEX_CMD = "/index"
 VOICE_ON_CMD = "/voiceon"
 VOICE_OFF_CMD = "/voiceoff"
 VOICE_ENABLED = {}
+
+# Regex for detecting links
+URL_REGEX = re.compile(r"https://\S+")
+
+
+async def append_link_snippets(text: str) -> str:
+    """Append snippet from any https:// link in the text."""
+    urls = URL_REGEX.findall(text)
+    if not urls:
+        return text
+    parts = [text]
+    for url in urls:
+        snippet = await extract_text_from_url(url)
+        parts.append(f"\n[Snippet from {url}]\n{snippet[:500]}")
+    return "\n".join(parts)
 
 
 async def transcribe_voice(file_path: str) -> str:
@@ -82,6 +98,7 @@ async def voice_messages(m: types.Message):
         await bot.download(m.voice.file_id, tmp.name)
     text = await transcribe_voice(tmp.name)
     os.remove(tmp.name)
+    text = await append_link_snippets(text)
     async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
         resp = await engine.ask(thread_key, text, is_group=is_group)
         if VOICE_ENABLED.get(m.chat.id):
@@ -179,7 +196,8 @@ async def all_messages(m: types.Message):
 
     async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
         # Генерируем ответ через Assistants API
-        resp = await engine.ask(thread_key, text, is_group=is_group)
+        prompt = await append_link_snippets(text)
+        resp = await engine.ask(thread_key, prompt, is_group=is_group)
         if VOICE_ENABLED.get(m.chat.id):
             voice_path = await synthesize_voice(resp)
             await m.answer_voice(types.FSInputFile(voice_path), caption=resp[:1024])
