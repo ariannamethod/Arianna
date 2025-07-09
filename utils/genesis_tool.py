@@ -1,4 +1,8 @@
 import os
+import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 def genesis_tool_schema():
     """
@@ -42,7 +46,16 @@ async def handle_genesis_call(tool_calls):
     # Берём первый вызов:
 
     call = tool_calls[0]
-    args = call["function"]["arguments"]
+    raw_args = call["function"].get("arguments")
+    if isinstance(raw_args, dict):
+        args = raw_args
+    else:
+        try:
+            args = json.loads(raw_args or "{}")
+        except Exception as e:
+            logger.error("Failed to parse genesis arguments: %s", raw_args, exc_info=e)
+            return "Failed to parse genesis arguments"
+
     mode = args.get("mode", "impression")
     # Генерим синхронно нужное действие:
 
