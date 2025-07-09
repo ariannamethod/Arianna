@@ -38,6 +38,16 @@ VOICE_ON_CMD = "/voiceon"
 VOICE_OFF_CMD = "/voiceoff"
 VOICE_ENABLED = {}
 
+# --- optional behavior tuning ---
+GROUP_DELAY_MIN   = int(os.getenv("GROUP_DELAY_MIN", 120))   # 2 minutes
+GROUP_DELAY_MAX   = int(os.getenv("GROUP_DELAY_MAX", 600))   # 10 minutes
+PRIVATE_DELAY_MIN = int(os.getenv("PRIVATE_DELAY_MIN", 30))  # 30 seconds
+PRIVATE_DELAY_MAX = int(os.getenv("PRIVATE_DELAY_MAX", 180)) # 3 minutes
+SKIP_SHORT_PROB   = float(os.getenv("SKIP_SHORT_PROB", 0.5))
+FOLLOWUP_PROB     = float(os.getenv("FOLLOWUP_PROB", 0.2))
+FOLLOWUP_DELAY_MIN = int(os.getenv("FOLLOWUP_DELAY_MIN", 900))   # 15 minutes
+FOLLOWUP_DELAY_MAX = int(os.getenv("FOLLOWUP_DELAY_MAX", 7200))  # 2 hours
+
 # Regex for detecting links
 URL_REGEX = re.compile(r"https://\S+")
 
@@ -80,6 +90,40 @@ async def synthesize_voice(text: str) -> str:
     os.remove(mp3_fd.name)
     return ogg_fd.name
 
+
+async def send_delayed_response(m: types.Message, resp: str, is_group: bool, thread_key: str):
+    """Send the reply after a randomized delay and schedule optional follow-up."""
+    if is_group:
+        delay = random.uniform(GROUP_DELAY_MIN, GROUP_DELAY_MAX)
+    else:
+        delay = random.uniform(PRIVATE_DELAY_MIN, PRIVATE_DELAY_MAX)
+    await asyncio.sleep(delay)
+    if VOICE_ENABLED.get(m.chat.id):
+        voice_path = await synthesize_voice(resp)
+        await m.answer_voice(types.FSInputFile(voice_path), caption=resp[:1024])
+        os.remove(voice_path)
+    else:
+        for chunk in split_message(resp):
+            await m.answer(chunk)
+
+    if random.random() < FOLLOWUP_PROB:
+        asyncio.create_task(schedule_followup(m.chat.id, thread_key, is_group))
+
+
+async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
+    """Send a short follow-up message referencing the earlier conversation."""
+    delay = random.uniform(FOLLOWUP_DELAY_MIN, FOLLOWUP_DELAY_MAX)
+    await asyncio.sleep(delay)
+    follow_prompt = "Send a short follow-up message referencing our earlier conversation."
+    resp = await engine.ask(thread_key, follow_prompt, is_group=is_group)
+    if VOICE_ENABLED.get(chat_id):
+        voice_path = await synthesize_voice(resp)
+        await bot.send_voice(chat_id, types.FSInputFile(voice_path), caption=resp[:1024])
+        os.remove(voice_path)
+    else:
+        for chunk in split_message(resp):
+            await bot.send_message(chat_id, chunk)
+
 # --- health check routes ---
 async def healthz(request):
     return web.Response(text="ok")
@@ -99,15 +143,12 @@ async def voice_messages(m: types.Message):
     text = await transcribe_voice(tmp.name)
     os.remove(tmp.name)
     text = await append_link_snippets(text)
+    if len(text.split()) < 4 or '?' not in text:
+        if random.random() < SKIP_SHORT_PROB:
+            return
     async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
         resp = await engine.ask(thread_key, text, is_group=is_group)
-        if VOICE_ENABLED.get(m.chat.id):
-            voice_path = await synthesize_voice(resp)
-            await m.answer_voice(types.FSInputFile(voice_path), caption=resp[:1024])
-            os.remove(voice_path)
-        else:
-            for chunk in split_message(resp):
-                await m.answer(chunk)
+        asyncio.create_task(send_delayed_response(m, resp, is_group, thread_key))
 
 @dp.message(lambda m: True)
 async def all_messages(m: types.Message):
@@ -190,6 +231,10 @@ async def all_messages(m: types.Message):
     if not (mentioned or is_reply):
         return
 
+    if len(text.split()) < 4 or '?' not in text:
+        if random.random() < SKIP_SHORT_PROB:
+            return
+
     thread_key = user_id
     if is_group:
         thread_key = str(m.chat.id)  # shared history for the whole group
@@ -198,13 +243,7 @@ async def all_messages(m: types.Message):
         # Генерируем ответ через Assistants API
         prompt = await append_link_snippets(text)
         resp = await engine.ask(thread_key, prompt, is_group=is_group)
-        if VOICE_ENABLED.get(m.chat.id):
-            voice_path = await synthesize_voice(resp)
-            await m.answer_voice(types.FSInputFile(voice_path), caption=resp[:1024])
-            os.remove(voice_path)
-        else:
-            for chunk in split_message(resp):
-                await m.answer(chunk)
+        asyncio.create_task(send_delayed_response(m, resp, is_group, thread_key))
 
 async def main():
     global BOT_USERNAME, BOT_ID
