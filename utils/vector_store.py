@@ -73,7 +73,8 @@ def chunk_text(text, chunk_size=900, overlap=120):
     return chunks
 
 async def vectorize_all_files(openai_api_key, force=False, on_message=None):
-    init_pinecone()
+    if pc is None or vector_index is None:
+        init_pinecone()
     current = scan_files()
     previous = load_vector_meta()
     changed = [f for f in current if (force or current[f] != previous.get(f))]
@@ -122,7 +123,8 @@ async def vectorize_all_files(openai_api_key, force=False, on_message=None):
     return {"upserted": upserted_ids, "deleted": deleted_ids}
 
 async def semantic_search(query, openai_api_key, top_k=5):
-    init_pinecone()
+    if pc is None or vector_index is None:
+        init_pinecone()
     emb = await safe_embed(query, openai_api_key)
     res = vector_index.query(vector=emb, top_k=top_k, include_metadata=True)
     chunks = []
