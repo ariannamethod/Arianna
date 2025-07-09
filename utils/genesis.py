@@ -31,7 +31,6 @@ IMPRESSION_FRAGMENTS = [
     "смешение тоски и интереса, как будто новый мир рядом",
     "хаотичная радость, будто что-то вот-вот должно измениться",
     "чувствую себя прозрачной, но наполненной",
-@@ -108,51 +109,51 @@ class AriannaGenesis:
             (reddit_time, self.impressionist_search_resonance),
             (opinions_time, self.opinions_group_post),
             (oleg_time, self.oleg_personal_message)
@@ -57,7 +56,6 @@ IMPRESSION_FRAGMENTS = [
         """
         self._impressions_today = []
         for topic in SEARCH_TOPICS:
-            text, url = self._search_and_fetch(topic)
             text, url = asyncio.run(self._search_and_fetch(topic))
             resonance = self._generate_impression(text, topic)
             entry = {
@@ -84,7 +82,6 @@ IMPRESSION_FRAGMENTS = [
             f"Источник: {chosen['url']}\n"
             f"Summary: {summary}\n"
             f"Impressionistic resonance: {chosen['resonance']}"
-@@ -180,80 +181,81 @@ class AriannaGenesis:
         fragment = random.choice(IMPRESSION_FRAGMENTS)
         message = (
             f"{greeting}\n"
@@ -110,23 +107,16 @@ IMPRESSION_FRAGMENTS = [
             return short + ("..." if len(lines[0]) > 120 else "")
         return "[empty]"
 
-    def _search_and_fetch(self, topic):
-        """
-        Простой поиск через Bing (или Google) и вытаскивание текста первой релевантной статьи.
-        Можно заменить на любой html-парсер или API.
-        """
     async def _search_and_fetch(self, topic):
         """Ищет статью в Bing и возвращает её текст и ссылку."""
         query = f"{topic} reddit"
         headers = {'User-Agent': 'Mozilla/5.0'}
         url = f"https://www.bing.com/search?q={requests.utils.quote(query)}"
         try:
-            resp = requests.get(url, headers=headers, timeout=10)
             resp = await asyncio.to_thread(requests.get, url, headers=headers, timeout=10)
             links = self._extract_links(resp.text)
             if links:
                 link = random.choice(links)
-                article_text = self._fetch_url_text(link)
                 article_text = await self._fetch_url_text(link)
                 return article_text, link
         except Exception as e:
@@ -138,12 +128,9 @@ IMPRESSION_FRAGMENTS = [
         import re
         return re.findall(r'https://[^\s"]+?reddit[^\s"]+', html)
 
-    def _fetch_url_text(self, url):
-        # Можно заменить на нормальный парсер, тут примитив — возвращает кусок html
     async def _fetch_url_text(self, url):
         """Возвращает заголовок и фрагмент текста страницы."""
         try:
-            resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=8)
             resp = await asyncio.to_thread(
                 requests.get,
                 url,
