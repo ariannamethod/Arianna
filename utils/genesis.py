@@ -4,6 +4,7 @@ import random
 import datetime
 import requests
 import os
+import asyncio
 
 # === Настройки и переменные из окружения / .env ===
 GROUP_ID = os.environ.get("GROUP_ID", "ARIANNA-CORE")
@@ -130,7 +131,7 @@ class AriannaGenesis:
         """
         self._impressions_today = []
         for topic in SEARCH_TOPICS:
-            text, url = self._search_and_fetch(topic)
+            text, url = asyncio.run(self._search_and_fetch(topic))
             resonance = self._generate_impression(text, topic)
             entry = {
                 "topic": topic,
@@ -202,20 +203,17 @@ class AriannaGenesis:
             return short + ("..." if len(lines[0]) > 120 else "")
         return "[empty]"
 
-    def _search_and_fetch(self, topic):
-        """
-        Простой поиск через Bing (или Google) и вытаскивание текста первой релевантной статьи.
-        Можно заменить на любой html-парсер или API.
-        """
+    async def _search_and_fetch(self, topic):
+        """Ищет статью в Bing и возвращает её текст и ссылку."""
         query = f"{topic} reddit"
         headers = {'User-Agent': 'Mozilla/5.0'}
         url = f"https://www.bing.com/search?q={requests.utils.quote(query)}"
         try:
-            resp = requests.get(url, headers=headers, timeout=10)
+            resp = await asyncio.to_thread(requests.get, url, headers=headers, timeout=10)
             links = self._extract_links(resp.text)
             if links:
                 link = random.choice(links)
-                article_text = self._fetch_url_text(link)
+                article_text = await self._fetch_url_text(link)
                 return article_text, link
         except Exception as e:
             self._log(f"[AriannaGenesis] Bing search error: {e}")
@@ -226,12 +224,16 @@ class AriannaGenesis:
         import re
         return re.findall(r'https://[^\s"]+?reddit[^\s"]+', html)
 
-    def _fetch_url_text(self, url):
-        # Можно заменить на нормальный парсер, тут примитив — возвращает кусок html
+    async def _fetch_url_text(self, url):
+        """Возвращает заголовок и фрагмент текста страницы."""
         try:
-            resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=8)
+            resp = await asyncio.to_thread(
+                requests.get,
+                url,
+                headers={'User-Agent': 'Mozilla/5.0'},
+                timeout=8
+            )
             text = resp.text
-            # Просто вырезаем <title> и первые 500 символов
             import re
             title = re.findall(r'<title>(.*?)</title>', text)
             body = re.sub('<[^<]+?>', '', text)
