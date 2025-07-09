@@ -45,8 +45,23 @@ async def all_messages(m: types.Message):
             await m.answer(chunk)
 
 async def main():
-    # создаём ассистента и любые ресурс-ассеты (vector store, функции)
-    await engine.setup_assistant()
+    # создаём ассистента и любые ресурс‑ассеты
+    init_failed = False
+    try:
+        await engine.setup_assistant()
+    except Exception:
+        logger.exception("Assistant initialization failed")
+        init_failed = True
+
+    app = web.Application()
+    path = f"/webhook/{BOT_TOKEN}"
+    if init_failed:
+        async def failed(request):
+            return web.Response(status=500, text="Initialization failed")
+        app.router.add_route("*", path, failed)
+    else:
+        SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=path)
+        setup_application(app, dp)
 
     app = web.Application()
     path = f"/webhook/{BOT_TOKEN}"
