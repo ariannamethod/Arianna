@@ -86,6 +86,12 @@ Use `/voiceoff` to switch back to text replies. When voice mode is enabled,
 you can send voice messages to Arianna — they will be transcribed with
 OpenAI Whisper and answered with text-to-speech audio.
 
+### URL snippets
+
+When a message includes an `https://` link, Arianna fetches a short excerpt of
+that page and appends it to your prompt before generating a reply. This gives
+the model more context from the referenced site.
+
 ## Deployment
 
 A simple [Procfile](./Procfile) is provided for platforms such as Heroku:
