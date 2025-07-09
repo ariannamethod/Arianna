@@ -26,7 +26,7 @@ source .env
 python -m dotenv run -- python server_arianna.py
 ```
 
-Important variables include `TELEGRAM_TOKEN`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, and the Pinecone settings. `PORT` controls which port the webhook listens on (defaults to 8000).
+Important variables include `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `OPENAI_API_KEY` and `DEEPSEEK_API_KEY`. Pinecone settings are also required if you use semantic search.
 Several optional variables fine‑tune the bot's behavior:
 
 - `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 120–600).
@@ -37,13 +37,15 @@ Several optional variables fine‑tune the bot's behavior:
 
 ## Running the bot
 
-Start the webhook server with:
+Run the Telegram client with:
 
 ```bash
 python server_arianna.py
 ```
 
-This launches an aiohttp web server and keeps running until interrupted.
+On the first start Telethon will ask for your phone number and a verification
+code. The resulting credentials are stored in `arianna.session`. Delete this
+file if you need to re-authenticate later.
 
 The bot stores conversation history in memory using your Telegram user ID.
 Unless you implement persistent storage, this memory resets each time the
