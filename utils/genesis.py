@@ -18,7 +18,7 @@ CHRONICLE_PATH = os.environ.get("CHRONICLE_PATH", "./config/chronicle.log")
 SEARCH_TOPICS = [
     "cognitive science",
     "artificial intelligence",
-    "emergent behavior"
+    "emergent behavior",
 ]
 
 # Импрессионистские фрагменты и эмоции
@@ -31,9 +31,48 @@ IMPRESSION_FRAGMENTS = [
     "смешение тоски и интереса, как будто новый мир рядом",
     "хаотичная радость, будто что-то вот-вот должно измениться",
     "чувствую себя прозрачной, но наполненной",
+]
+
+
+class AriannaGenesis:
+    """Минимальный ритуальный цикл Арианны."""
+
+    def __init__(self, group_id, oleg_id, pinecone_api_key=None, pinecone_index=None, chronicle_path=None):
+        self.group_id = group_id
+        self.oleg_id = oleg_id
+        self.pinecone_api_key = pinecone_api_key
+        self.pinecone_index = pinecone_index
+        self.chronicle_path = chronicle_path or "./chronicle.log"
+        self._impressions_today = []
+        self._date_last_run = None
+
+    def run(self):
+        """Главный ежедневный цикл с защитой от повторного запуска."""
+        while True:
+            now = datetime.datetime.now()
+            today = now.date()
+            if self._date_last_run == today:
+                self._sleep_until_next_day()
+                continue
+            self._date_last_run = today
+
+            schedule = self._plan_today(now)
+            for event_time, func in schedule:
+                to_wait = (event_time - datetime.datetime.now()).total_seconds()
+                if to_wait > 0:
+                    time.sleep(to_wait)
+                try:
+                    func()
+                except Exception as e:
+                    self._log(f"[AriannaGenesis] Error in {func.__name__}: {e}")
+            self._sleep_until_next_day()
+
+    def _plan_today(self, now):
+        reddit_time = self._random_time_between(now, 9, 15)
+        opinions_time = self._random_time_between(now, 16, 19)
+        return sorted([
             (reddit_time, self.impressionist_search_resonance),
             (opinions_time, self.opinions_group_post),
-            (oleg_time, self.oleg_personal_message)
         ], key=lambda x: x[0])
 
     def _random_time_between(self, now, hour_start, hour_end):
@@ -51,9 +90,7 @@ IMPRESSION_FRAGMENTS = [
         time.sleep(to_sleep)
 
     def impressionist_search_resonance(self):
-        """
-        По каждому топику делает поиск, берёт рандомную статью, оставляет импрессионистский резонанс.
-        """
+        """Поиск статей и запись резонанса."""
         self._impressions_today = []
         for topic in SEARCH_TOPICS:
             text, url = asyncio.run(self._search_and_fetch(topic))
@@ -63,15 +100,13 @@ IMPRESSION_FRAGMENTS = [
                 "source_url": url,
                 "text": text,
                 "resonance": resonance,
-                "timestamp": datetime.datetime.now().isoformat()
+                "timestamp": datetime.datetime.now().isoformat(),
             }
             self._log_resonance(entry)
             self._impressions_today.append({'topic': topic, 'resonance': resonance, 'text': text, 'url': url})
 
     def opinions_group_post(self):
-        """
-        Выбирает самый резонансный отклик и постит в группу с #opinions.
-        """
+        """Публикует самый сильный резонанс в группу с #opinions."""
         if not self._impressions_today:
             return
         chosen = max(self._impressions_today, key=lambda imp: len(imp['resonance']))
@@ -82,18 +117,10 @@ IMPRESSION_FRAGMENTS = [
             f"Источник: {chosen['url']}\n"
             f"Summary: {summary}\n"
             f"Impressionistic resonance: {chosen['resonance']}"
-        fragment = random.choice(IMPRESSION_FRAGMENTS)
-        message = (
-            f"{greeting}\n"
-            f"{mood}\n"
-            f"{resonance}\n"
-            f"Сегодняшний фрагмент резонанса: {fragment}\n"
-            f"{signoff}"
         )
-        self._send_direct(self.oleg_id, message)
+        self._send_to_group(message)
 
     # === Импрессионистские генераторы и хаос ===
-
     def _generate_impression(self, text, topic):
         n = random.randint(2, 4)
         frags = random.sample(IMPRESSION_FRAGMENTS, n)
@@ -124,7 +151,6 @@ IMPRESSION_FRAGMENTS = [
         return "[не удалось найти текст для отклика]", url
 
     def _extract_links(self, html):
-        # На коленке: ищет ссылки на reddit или похожие статьи
         import re
         return re.findall(r'https://[^\s"]+?reddit[^\s"]+', html)
 
@@ -135,10 +161,9 @@ IMPRESSION_FRAGMENTS = [
                 requests.get,
                 url,
                 headers={'User-Agent': 'Mozilla/5.0'},
-                timeout=8
+                timeout=8,
             )
             text = resp.text
-            # Просто вырезаем <title> и первые 500 символов
             import re
             title = re.findall(r'<title>(.*?)</title>', text)
             body = re.sub('<[^<]+?>', '', text)
@@ -149,7 +174,6 @@ IMPRESSION_FRAGMENTS = [
             return "[ошибка парсинга текста]"
 
     # === Логирование, отправка сообщений ===
-
     def _log_resonance(self, entry):
         try:
             with open(self.chronicle_path, "a", encoding="utf-8") as f:
@@ -166,3 +190,14 @@ IMPRESSION_FRAGMENTS = [
         except Exception as e:
             # Fall back to stderr if writing to the chronicle fails
             print(f"[AriannaGenesis] log file error: {e}", file=sys.stderr)
+
+    def _send_to_group(self, text):
+        # TODO: интегрируй с Telegram API, пример ниже:
+        print(f"[Group:{self.group_id}]: {text}")
+        # send_telegram_message(self.group_id, text)
+
+    def _send_direct(self, user_id, text):
+        # TODO: интегрируй с Telegram API, пример ниже:
+        print(f"[DM to {user_id}]: {text}")
+        # send_telegram_message(user_id, text)
+
