@@ -257,6 +257,7 @@ class AriannaGenesis:
             with open(self.chronicle_path, "a", encoding="utf-8") as f:
                 f.write(f"{datetime.datetime.now().isoformat()} {msg}\n")
         except Exception:
+            # Swallow logging errors so they don't disrupt execution
             pass
 
     def _send_to_group(self, text):
