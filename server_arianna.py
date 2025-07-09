@@ -80,12 +80,12 @@ async def synthesize_voice(text: str) -> str:
     ogg_fd = tempfile.NamedTemporaryFile(delete=False, suffix=".ogg")
     mp3_fd.close()
     ogg_fd.close()
-    resp = await openai_client.audio.speech.create(
+    resp = await openai_client.audio.speech.with_streaming_response.create(
         model="tts-1",
         voice="alloy",
         input=text,
     )
-    resp.stream_to_file(mp3_fd.name)
+    await resp.stream_to_file(mp3_fd.name)
     AudioSegment.from_file(mp3_fd.name).export(ogg_fd.name, format="ogg", codec="libopus")
     os.remove(mp3_fd.name)
     return ogg_fd.name
