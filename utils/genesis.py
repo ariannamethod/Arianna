@@ -5,6 +5,7 @@ import datetime
 import requests
 import os
 import asyncio
+import sys
 
 # === Настройки и переменные из окружения / .env ===
 GROUP_ID = os.environ.get("GROUP_ID", "ARIANNA-CORE")
@@ -175,4 +176,6 @@ IMPRESSION_FRAGMENTS = [
         try:
             with open(self.chronicle_path, "a", encoding="utf-8") as f:
                 f.write(f"{datetime.datetime.now().isoformat()} {msg}\n")
-        except Exception:
+        except Exception as e:
+            # Fall back to stderr if writing to the chronicle fails
+            print(f"[AriannaGenesis] log file error: {e}", file=sys.stderr)
