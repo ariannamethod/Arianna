@@ -154,7 +154,7 @@ class AriannaEngine:
                 answer = msg["content"][0]["text"]["value"]
 
             log_event({
-                "user_id": user_id,
+                "thread_key": thread_key,
                 "prompt": prompt,
                 "reply": answer,
             })
