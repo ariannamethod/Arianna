@@ -19,6 +19,14 @@ bot    = Bot(token=BOT_TOKEN)
 dp     = Dispatcher(bot=bot)
 engine = AriannaEngine()
 
+# --- health check routes ---
+async def healthz(request):
+    return web.Response(text="ok")
+
+
+async def status(request):
+    return web.Response(text="running")
+
 @dp.message(lambda m: True)
 async def all_messages(m: types.Message):
     user_id = str(m.from_user.id)
@@ -45,6 +53,9 @@ async def main():
     path = f"/webhook/{BOT_TOKEN}"
     SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=path)
     setup_application(app, dp)
+    # Register health check routes
+    app.router.add_get("/healthz", healthz)
+    app.router.add_get("/status", status)
     runner = web.AppRunner(app)
     await runner.setup()
     port = int(os.getenv("PORT", 8000))
