@@ -54,9 +54,11 @@ When used in a group, Arianna responds only when you address her explicitly or w
 Replying to one of Arianna's messages counts as addressing her as well.
 
 The username is retrieved automatically from Telegram, so no additional
-configuration is required. Conversation memory in group chats is also tied to
-each participant's ID and will be cleared on bot restart unless persisted. The
-DeepSeek integration works here too if `DEEPSEEK_API_KEY` is set.
+configuration is required. Conversation history in groups now uses a key that
+combines the chat ID with the sender ID (`<chat_id>:<user_id>`). This keeps
+threads separate between different groups and users. The memory is stored only
+in RAM and will be cleared on bot restart unless persisted. The DeepSeek
+integration works here too if `DEEPSEEK_API_KEY` is set.
 
 ### DeepSeek integration
 

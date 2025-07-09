@@ -63,24 +63,25 @@ class AriannaEngine:
             is_group=is_group
         )
 
-    async def _get_thread(self, user_id: str) -> str:
-        if user_id not in self.threads:
+    async def _get_thread(self, key: str) -> str:
+        """Get or create a thread for the given key."""
+        if key not in self.threads:
             async with httpx.AsyncClient() as client:
                 r = await client.post(
                     "https://api.openai.com/v1/threads",
                     headers=self.headers,
-                    json={"metadata": {"user_id": user_id}}
+                    json={"metadata": {"thread_key": key}}
                 )
                 r.raise_for_status()
-                self.threads[user_id] = r.json()["id"]
-        return self.threads[user_id]
+                self.threads[key] = r.json()["id"]
+        return self.threads[key]
 
-    async def ask(self, user_id: str, prompt: str, is_group: bool=False) -> str:
+    async def ask(self, thread_key: str, prompt: str, is_group: bool=False) -> str:
         """
         Кладёт prompt в thread, запускает run, ждёт и возвращает ответ.
         Если ассистент запрашивает GENESIS-функцию — обрабатываем через handle_genesis_call().
         """
-        tid = await self._get_thread(user_id)
+        tid = await self._get_thread(thread_key)
 
         # Добавляем пользовательский запрос
         async with httpx.AsyncClient() as client:
