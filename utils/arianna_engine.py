@@ -2,6 +2,7 @@ import os
 import asyncio
 import httpx
 import logging
+import time
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 from utils.deepseek_search import call_deepseek
 
@@ -105,7 +106,11 @@ class AriannaEngine:
             run_id = run.json()["id"]
 
             # Polling
+            start_time = time.monotonic()
             while True:
+                if time.monotonic() - start_time > 60:
+                    self.logger.error("Polling timeout for run %s", run_id)
+                    raise TimeoutError("AriannaEngine.ask() polling timed out")
                 await asyncio.sleep(0.5)
                 st = await client.get(
                     f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}",
@@ -130,6 +135,9 @@ class AriannaEngine:
                     continue
                 if status == "completed":
                     break
+                if status in {"failed", "cancelled"}:
+                    self.logger.error("Run %s ended with status %s", run_id, status)
+                    raise RuntimeError(f"Run {run_id} {status}")
 
             # Получаем все tool_calls (если есть) и обычный контент
             final = await client.get(
