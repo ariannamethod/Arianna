@@ -38,6 +38,18 @@ python server_arianna.py
 
 This launches an aiohttp web server and keeps running until interrupted.
 
+### Group chat behavior
+
+When used in a group, Arianna responds only when you address her explicitly.
+The following triggers are recognized:
+
+- `arianna`
+- `Арианна`
+- `@<bot_username>`
+
+The username is retrieved automatically from Telegram, so no additional
+configuration is required.
+
 ## Deployment
 
 A simple [Procfile](./Procfile) is provided for platforms such as Heroku:
