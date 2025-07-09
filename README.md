@@ -38,6 +38,11 @@ python server_arianna.py
 
 This launches an aiohttp web server and keeps running until interrupted.
 
+The bot stores conversation history in memory using your Telegram user ID.
+Unless you implement persistent storage, this memory resets each time the
+server restarts. Set `DEEPSEEK_API_KEY` in your environment to activate the
+DeepSeek integration before launching the bot.
+
 ### Group chat behavior
 
 When used in a group, Arianna responds only when you address her explicitly or when you reply to one of her messages. The following triggers are recognized:
@@ -49,7 +54,9 @@ When used in a group, Arianna responds only when you address her explicitly or w
 Replying to one of Arianna's messages counts as addressing her as well.
 
 The username is retrieved automatically from Telegram, so no additional
-configuration is required.
+configuration is required. Conversation memory in group chats is also tied to
+each participant's ID and will be cleared on bot restart unless persisted. The
+DeepSeek integration works here too if `DEEPSEEK_API_KEY` is set.
 
 ## Deployment
 
