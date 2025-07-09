@@ -51,6 +51,13 @@ Replying to one of Arianna's messages counts as addressing her as well.
 The username is retrieved automatically from Telegram, so no additional
 configuration is required.
 
+### DeepSeek integration
+
+Set `DEEPSEEK_API_KEY` in your `.env` to enable calls to the DeepSeek model.
+Use the `/ds` command followed by your prompt to send a message through
+DeepSeek. The regular conversation history with OpenAI is preserved when you
+use this command.
+
 ## Deployment
 
 A simple [Procfile](./Procfile) is provided for platforms such as Heroku:

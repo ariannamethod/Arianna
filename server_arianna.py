@@ -24,6 +24,7 @@ BOT_ID        = 0   # will be set at startup
 bot    = Bot(token=BOT_TOKEN)
 dp     = Dispatcher(bot=bot)
 engine = AriannaEngine()
+DEEPSEEK_CMD = "/ds"
 
 # --- health check routes ---
 async def healthz(request):
@@ -37,6 +38,17 @@ async def status(request):
 async def all_messages(m: types.Message):
     user_id = str(m.from_user.id)
     text    = m.text or ""
+
+    # Direct DeepSeek call
+    if text.strip().lower().startswith(DEEPSEEK_CMD):
+        query = text.strip()[len(DEEPSEEK_CMD):].lstrip()
+        if not query:
+            return
+        async with ChatActionSender(bot=bot, chat_id=m.chat.id, action="typing"):
+            resp = await engine.deepseek_reply(query)
+            for chunk in split_message(resp):
+                await m.answer(chunk)
+        return
 
     # Простая проверка упоминания бота в группах
     is_group = getattr(m.chat, "type", "") in ("group", "supergroup")
