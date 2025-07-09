@@ -23,6 +23,8 @@ class AriannaEngine:
             "Content-Type": "application/json",
             "OpenAI-Beta": "assistants=v2"
         }
+        # Allow customization of request timeouts; None disables timeouts
+        self.request_timeout = None
         self.assistant_id = None
         self.threads      = load_threads()  # user_id → thread_id
 
@@ -46,9 +48,13 @@ class AriannaEngine:
                 r = await client.post(
                     "https://api.openai.com/v1/assistants",
                     headers=self.headers,
-                    json=payload
+                    json=payload,
+                    timeout=self.request_timeout,
                 )
                 r.raise_for_status()
+            except httpx.TimeoutException:
+                self.logger.error("OpenAI request timed out during assistant setup")
+                return "OpenAI request timed out. Please try again later."
             except Exception as e:
                 self.logger.error("Failed to create Arianna Assistant", exc_info=e)
                 return f"Failed to create Arianna Assistant: {e}"
@@ -70,13 +76,18 @@ class AriannaEngine:
         """Get or create a thread for the given key."""
         if key not in self.threads:
             async with httpx.AsyncClient() as client:
-                r = await client.post(
-                    "https://api.openai.com/v1/threads",
-                    headers=self.headers,
-                    json={"metadata": {"thread_key": key}}
-                )
-                r.raise_for_status()
-                self.threads[key] = r.json()["id"]
+                try:
+                    r = await client.post(
+                        "https://api.openai.com/v1/threads",
+                        headers=self.headers,
+                        json={"metadata": {"thread_key": key}},
+                        timeout=self.request_timeout,
+                    )
+                    r.raise_for_status()
+                    self.threads[key] = r.json()["id"]
+                except httpx.TimeoutException:
+                    self.logger.error("OpenAI request timed out when creating thread")
+                    raise
             save_threads(self.threads)
         return self.threads[key]
 
@@ -93,9 +104,13 @@ class AriannaEngine:
                 msg = await client.post(
                     f"https://api.openai.com/v1/threads/{tid}/messages",
                     headers=self.headers,
-                    json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}}
+                    json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}},
+                    timeout=self.request_timeout,
                 )
                 msg.raise_for_status()
+            except httpx.TimeoutException:
+                self.logger.error("OpenAI request timed out when posting message")
+                raise
             except Exception as e:
                 self.logger.error("Failed to post user message", exc_info=e)
                 # Try to recreate the thread in case the ID became invalid
@@ -105,20 +120,29 @@ class AriannaEngine:
                     msg = await client.post(
                         f"https://api.openai.com/v1/threads/{tid}/messages",
                         headers=self.headers,
-                        json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}}
+                        json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}},
+                        timeout=self.request_timeout,
                     )
                     msg.raise_for_status()
+                except httpx.TimeoutException:
+                    self.logger.error("OpenAI request timed out after recreating thread")
+                    raise
                 except Exception as e2:
                     self.logger.error("Failed to post user message after recreating thread", exc_info=e2)
                     raise
 
             # Запускаем ассистента
-            run = await client.post(
-                f"https://api.openai.com/v1/threads/{tid}/runs",
-                headers=self.headers,
-                json={"assistant_id": self.assistant_id}
-            )
-            run.raise_for_status()
+            try:
+                run = await client.post(
+                    f"https://api.openai.com/v1/threads/{tid}/runs",
+                    headers=self.headers,
+                    json={"assistant_id": self.assistant_id},
+                    timeout=self.request_timeout,
+                )
+                run.raise_for_status()
+            except httpx.TimeoutException:
+                self.logger.error("OpenAI request timed out when starting run")
+                raise
             run_id = run.json()["id"]
 
             # Polling
@@ -128,10 +152,15 @@ class AriannaEngine:
                     self.logger.error("Polling timeout for run %s", run_id)
                     raise TimeoutError("AriannaEngine.ask() polling timed out")
                 await asyncio.sleep(0.5)
-                st = await client.get(
-                    f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}",
-                    headers=self.headers
-                )
+                try:
+                    st = await client.get(
+                        f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}",
+                        headers=self.headers,
+                        timeout=self.request_timeout,
+                    )
+                except httpx.TimeoutException:
+                    self.logger.error("OpenAI request timed out while polling run status")
+                    raise
                 run_json = st.json()
                 status = run_json["status"]
                 if status == "requires_action":
@@ -140,14 +169,19 @@ class AriannaEngine:
                         .get("tool_calls", [])
                     if tool_calls:
                         output = await handle_genesis_call(tool_calls)
-                        await client.post(
-                            f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}/submit_tool_outputs",
-                            headers=self.headers,
-                            json={"tool_outputs": [{
-                                "tool_call_id": tool_calls[0]["id"],
-                                "output": output
-                            }]}
-                        )
+                        try:
+                            await client.post(
+                                f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}/submit_tool_outputs",
+                                headers=self.headers,
+                                json={"tool_outputs": [{
+                                    "tool_call_id": tool_calls[0]["id"],
+                                    "output": output
+                                }]},
+                                timeout=self.request_timeout,
+                            )
+                        except httpx.TimeoutException:
+                            self.logger.error("Timeout submitting tool outputs")
+                            raise
                     continue
                 if status == "completed":
                     break
@@ -156,10 +190,15 @@ class AriannaEngine:
                     raise RuntimeError(f"Run {run_id} {status}")
 
             # Получаем все tool_calls (если есть) и обычный контент
-            final = await client.get(
-                f"https://api.openai.com/v1/threads/{tid}/messages",
-                headers=self.headers
-            )
+            try:
+                final = await client.get(
+                    f"https://api.openai.com/v1/threads/{tid}/messages",
+                    headers=self.headers,
+                    timeout=self.request_timeout,
+                )
+            except httpx.TimeoutException:
+                self.logger.error("Timeout when retrieving final message")
+                raise
             msg = final.json()["data"][0]
             # Если ассистент вызвал функцию GENESIS:
             if msg.get("tool_calls"):
