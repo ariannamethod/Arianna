@@ -3,6 +3,7 @@ import asyncio
 import httpx
 import logging
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
+from utils.deepseek_search import call_deepseek
 
 class AriannaEngine:
     """
@@ -140,4 +141,16 @@ class AriannaEngine:
             if msg.get("tool_calls"):
                 return await handle_genesis_call(msg["tool_calls"])
             return msg["content"][0]["text"]["value"]
+
+    async def deepseek_reply(self, prompt: str) -> str:
+        """Отправить сообщение в DeepSeek и вернуть его ответ."""
+        system_prompt = self._load_system_prompt()
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
+        reply = await call_deepseek(messages)
+        if reply is None:
+            return "DeepSeek did not return a response"
+        return reply
 
