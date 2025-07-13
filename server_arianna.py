@@ -19,8 +19,8 @@ from utils.deepseek_search import DEEPSEEK_ENABLED
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-API_ID = int(os.getenv("TELEGRAM_API_ID", 0))
-API_HASH = os.getenv("TELEGRAM_API_HASH", "")
+API_ID = int(os.getenv("TELEGRAM_API_ID", 26384703))
+API_HASH = os.getenv("TELEGRAM_API_HASH", "746769d04371688654c0aee063fa96f2")
 
 client = TelegramClient("arianna", API_ID, API_HASH)
 engine = AriannaEngine()
