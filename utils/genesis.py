@@ -1,5 +1,5 @@
 import threading
-import time
+import asyncio
 import random
 import datetime
 import requests
@@ -76,30 +76,39 @@ class AriannaGenesis:
         self.chronicle_path = chronicle_path or "./chronicle.log"
         self._impressions_today = []
         self._date_last_run = None
+        self._running = False
+        self._task = None
 
-    def run(self):
+    async def run(self):
         """
         Главный ежедневный цикл: три события в разные часы, каждый день новые времена.
         Защита от лупов: не сработает дважды в сутки.
         """
-        while True:
-            now = datetime.datetime.now()
-            today = now.date()
-            if self._date_last_run == today:
-                self._sleep_until_next_day()
-                continue
-            self._date_last_run = today
+        try:
+            while self._running:
+                now = datetime.datetime.now()
+                today = now.date()
+                if self._date_last_run == today:
+                    await self._sleep_until_next_day()
+                    continue
+                self._date_last_run = today
 
-            schedule = self._plan_today(now)
-            for event_time, func in schedule:
-                to_wait = (event_time - datetime.datetime.now()).total_seconds()
-                if to_wait > 0:
-                    time.sleep(to_wait)
-                try:
-                    func()
-                except Exception as e:
-                    self._log(f"[AriannaGenesis] Error in {func.__name__}: {e}")
-            self._sleep_until_next_day()
+                schedule = self._plan_today(now)
+                for event_time, func in schedule:
+                    if not self._running:
+                        break
+                    to_wait = (event_time - datetime.datetime.now()).total_seconds()
+                    if to_wait > 0:
+                        await asyncio.sleep(to_wait)
+                    if not self._running:
+                        break
+                    try:
+                        await asyncio.to_thread(func)
+                    except Exception as e:
+                        self._log(f"[AriannaGenesis] Error in {func.__name__}: {e}")
+                await self._sleep_until_next_day()
+        except asyncio.CancelledError:
+            pass
 
     def _plan_today(self, now):
         reddit_time = self._random_time_between(now, 9, 15)
@@ -119,11 +128,32 @@ class AriannaGenesis:
         s = random.randint(0, 59)
         return now.replace(hour=h, minute=m, second=s, microsecond=0)
 
-    def _sleep_until_next_day(self):
+    async def _sleep_until_next_day(self):
         now = datetime.datetime.now()
         next_day = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         to_sleep = max(1, (next_day - now).total_seconds())
-        time.sleep(to_sleep)
+        await asyncio.sleep(to_sleep)
+
+    def start(self):
+        if getattr(self, "_task", None) and not self._task.done():
+            return self._task
+        self._running = True
+        self._task = asyncio.create_task(self.run())
+        return self._task
+
+    async def stop(self):
+        self._running = False
+        if getattr(self, "_task", None):
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
+
+    async def restart(self):
+        await self.stop()
+        return self.start()
 
     def impressionist_search_resonance(self):
         """
