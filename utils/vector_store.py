@@ -2,7 +2,6 @@ import os
 import glob
 import json
 import hashlib
-import asyncio
 from pinecone import Pinecone, PineconeException
 import openai
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -58,10 +57,10 @@ async def safe_embed(text, openai_api_key):
     return await get_embedding(text, openai_api_key)
 
 async def get_embedding(text, openai_api_key):
-    openai.api_key = openai_api_key
-    res = openai.embeddings.create(
+    client = openai.AsyncOpenAI(api_key=openai_api_key)
+    res = await client.embeddings.create(
         model="text-embedding-ada-002",
-        input=text
+        input=text,
     )
     return res.data[0].embedding
 
