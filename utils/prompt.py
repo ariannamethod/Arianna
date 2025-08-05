@@ -1,4 +1,8 @@
+import logging
 import tiktoken
+
+
+logger = logging.getLogger(__name__)
 
 # ────────────────────────────────────────────────────────────────────────────────
 # SYSTEM / AGENT PROMPT FOR ARIANNA (ANCHOR PROTOCOL v7.0, Monday-compatible)
@@ -98,6 +102,6 @@ def build_system_prompt(
         full_prompt = enc.decode(tokens[:MAX_TOKENS])
 
     # (For debug)
-    print("=== ARIANNA ANCHOR SYSTEM PROMPT ===")
-    print(full_prompt[:1000])
+    logger.debug("=== ARIANNA ANCHOR SYSTEM PROMPT ===")
+    logger.debug(full_prompt[:1000])
     return full_prompt

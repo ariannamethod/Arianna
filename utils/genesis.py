@@ -4,6 +4,7 @@ import random
 import datetime
 import requests
 import os
+import logging
 
 # === Настройки и переменные из окружения / .env ===
 GROUP_ID = os.environ.get("GROUP_ID", "ARIANNA-CORE")
@@ -12,6 +13,8 @@ PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
 PINECONE_INDEX = os.environ.get("PINECONE_INDEX")
 CHRONICLE_PATH = os.environ.get("CHRONICLE_PATH", "./config/chronicle.log")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+
+logger = logging.getLogger(__name__)
 
 # — Темы для поиска
 SEARCH_TOPICS = [
@@ -283,7 +286,7 @@ class AriannaGenesis:
             self._log(f"[AriannaGenesis] log_resonance error: {e}")
 
     def _log(self, msg):
-        print(msg)
+        logger.info(msg)
         try:
             with open(self.chronicle_path, "a", encoding="utf-8") as f:
                 f.write(f"{datetime.datetime.now().isoformat()} {msg}\n")
