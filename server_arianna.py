@@ -4,6 +4,7 @@ import asyncio
 import random
 import logging
 import tempfile
+from typing import Optional
 
 import openai
 import httpx
@@ -40,7 +41,7 @@ PHONE = os.getenv("TELEGRAM_PHONE", "+972584038033")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 
-def create_telegram_client(phone: str | None = None, bot_token: str | None = None) -> TelegramClient:
+def create_telegram_client(phone: Optional[str] = None, bot_token: Optional[str] = None) -> TelegramClient:
     session_name = "arianna_bot" if bot_token else "arianna"
     return TelegramClient(session_name, API_ID, API_HASH)
 
