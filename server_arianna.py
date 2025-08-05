@@ -63,6 +63,7 @@ FOLLOWUP_DELAY_MAX = int(os.getenv("FOLLOWUP_DELAY_MAX", 7200))  # 2 hours
 
 # Regex for detecting links
 URL_REGEX = re.compile(r"https://\S+")
+URL_FETCH_TIMEOUT = int(os.getenv("URL_FETCH_TIMEOUT", 10))
 
 BOT_USERNAME = ""
 BOT_ID = 0
@@ -72,10 +73,15 @@ async def append_link_snippets(text: str) -> str:
     urls = URL_REGEX.findall(text)
     if not urls:
         return text
+    tasks = [asyncio.wait_for(extract_text_from_url(url), URL_FETCH_TIMEOUT) for url in urls]
+    snippets = await asyncio.gather(*tasks, return_exceptions=True)
     parts = [text]
-    for url in urls:
-        snippet = await extract_text_from_url(url)
-        parts.append(f"\n[Snippet from {url}]\n{snippet[:500]}")
+    for url, snippet in zip(urls, snippets):
+        if isinstance(snippet, Exception):
+            snippet_text = f"[Error loading page: {snippet}]"
+        else:
+            snippet_text = snippet
+        parts.append(f"\n[Snippet from {url}]\n{snippet_text[:500]}")
     return "\n".join(parts)
 
 async def transcribe_voice(file_path: str) -> str:
