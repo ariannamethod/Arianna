@@ -28,8 +28,8 @@ class AriannaEngine:
             "Content-Type": "application/json",
             "OpenAI-Beta": "assistants=v2"
         }
-        # Allow customization of request timeouts; None disables timeouts
-        self.request_timeout = None
+        # Timeout (in seconds) for all HTTP requests
+        self.request_timeout = 30
         self.assistant_id = None
         self.threads      = load_threads()  # user_id → thread_id
 
