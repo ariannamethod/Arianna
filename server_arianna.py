@@ -8,6 +8,7 @@ from typing import Optional
 
 import openai
 import httpx
+from typing import Optional
 from pydub import AudioSegment
 from telethon import TelegramClient, events
 from telethon.tl.types import MessageEntityMention
