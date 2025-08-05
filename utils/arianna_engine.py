@@ -18,6 +18,11 @@ class AriannaEngine:
     def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.openai_key = os.getenv("OPENAI_API_KEY")
+        if not self.openai_key:
+            raise SystemExit("OPENAI_API_KEY environment variable is not set. Exiting.")
+        self.deepseek_key = os.getenv("DEEPSEEK_API_KEY")
+        if not self.deepseek_key:
+            raise SystemExit("DEEPSEEK_API_KEY environment variable is not set. Exiting.")
         self.headers    = {
             "Authorization": f"Bearer {self.openai_key}",
             "Content-Type": "application/json",
