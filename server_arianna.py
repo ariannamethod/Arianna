@@ -19,13 +19,23 @@ from utils.deepseek_search import DEEPSEEK_ENABLED
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    logger.error("OPENAI_API_KEY environment variable is not set")
+    raise SystemExit("Missing OPENAI_API_KEY. Set the environment variable and restart the application.")
+
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+if not DEEPSEEK_API_KEY:
+    logger.error("DEEPSEEK_API_KEY environment variable is not set")
+    raise SystemExit("Missing DEEPSEEK_API_KEY. Set the environment variable and restart the application.")
+
 API_ID = int(os.getenv("TELEGRAM_API_ID", 20973755))
 API_HASH = os.getenv("TELEGRAM_API_HASH", "51173cd91874b5f7576b2012f08f40f0")
 PHONE = os.getenv("TELEGRAM_PHONE", "+972584038033")
 
 client = TelegramClient("arianna", API_ID, API_HASH)
 engine = AriannaEngine()
-openai_client = openai.AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 DEEPSEEK_CMD = "/ds"
 SEARCH_CMD = "/search"
 INDEX_CMD = "/index"
