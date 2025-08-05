@@ -26,7 +26,7 @@ source .env
 python -m dotenv run -- python server_arianna.py
 ```
 
-Important variables include `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `OPENAI_API_KEY` and `DEEPSEEK_API_KEY`. Pinecone settings (`PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_ENV`) are also required if you use semantic search.
+Important variables include `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `OPENAI_API_KEY` and `DEEPSEEK_API_KEY`. Set `TELEGRAM_BOT_TOKEN` to run the client in bot mode, otherwise `TELEGRAM_PHONE` is used for user mode. Pinecone settings (`PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_ENV`) are also required if you use semantic search.
 Several optional variables fine‑tune the bot's behavior:
 
 - `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 120–600).
@@ -43,9 +43,7 @@ Run the Telegram client with:
 python server_arianna.py
 ```
 
-On the first start Telethon will ask for your phone number and a verification
-code. The resulting credentials are stored in `arianna.session`. Delete this
-file if you need to re-authenticate later.
+If `TELEGRAM_BOT_TOKEN` is set the script logs in as a bot and no phone number is required. Otherwise, on the first start Telethon will ask for your phone number and a verification code. The resulting credentials are stored in `arianna.session`. Delete this file if you need to re-authenticate later.
 
 The bot stores conversation history in memory using your Telegram user ID.
 Unless you implement persistent storage, this memory resets each time the

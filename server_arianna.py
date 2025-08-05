@@ -33,8 +33,15 @@ if not DEEPSEEK_API_KEY:
 API_ID = int(os.getenv("TELEGRAM_API_ID", 20973755))
 API_HASH = os.getenv("TELEGRAM_API_HASH", "51173cd91874b5f7576b2012f08f40f0")
 PHONE = os.getenv("TELEGRAM_PHONE", "+972584038033")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-client = TelegramClient("arianna", API_ID, API_HASH)
+
+def create_telegram_client(phone: str | None = None, bot_token: str | None = None) -> TelegramClient:
+    session_name = "arianna_bot" if bot_token else "arianna"
+    return TelegramClient(session_name, API_ID, API_HASH)
+
+
+client = create_telegram_client(phone=PHONE, bot_token=BOT_TOKEN)
 engine = AriannaEngine()
 openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 DEEPSEEK_CMD = "/ds"
@@ -245,7 +252,10 @@ async def all_messages(event):
 
 async def main():
     global BOT_USERNAME, BOT_ID
-    await client.start(phone=PHONE)
+    if BOT_TOKEN:
+        await client.start(bot_token=BOT_TOKEN)
+    else:
+        await client.start(phone=PHONE)
     me = await client.get_me()
     BOT_USERNAME = (me.username or "").lower()
     BOT_ID = me.id
