@@ -17,7 +17,11 @@ from utils.vector_store import semantic_search, vectorize_all_files
 from utils.text_helpers import extract_text_from_url
 from utils.deepseek_search import DEEPSEEK_ENABLED
 
-logging.basicConfig(level=logging.INFO)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -270,7 +274,7 @@ async def main():
     except Exception:
         logger.exception("Assistant initialization failed")
         return
-    print("🚀 Arianna client started")
+    logger.info("🚀 Arianna client started")
     await client.run_until_disconnected()
 
 if __name__ == "__main__":
