@@ -3,9 +3,19 @@ import glob
 import json
 import hashlib
 import asyncio
-from pinecone import Pinecone, PineconeException
+import logging
+from functools import partial
+
+from pinecone import Pinecone
 import openai
 from tenacity import retry, stop_after_attempt, wait_fixed
+
+try:
+    from openai import AsyncOpenAI
+except Exception:  # pragma: no cover - fallback for older versions
+    AsyncOpenAI = None
+
+logger = logging.getLogger(__name__)
 
 VECTOR_META_PATH = "vector_store.meta.json"
 EMBED_DIM = 1536  # For OpenAI ada-002
@@ -57,13 +67,26 @@ def save_vector_meta(meta):
 async def safe_embed(text, openai_api_key):
     return await get_embedding(text, openai_api_key)
 
+
 async def get_embedding(text, openai_api_key):
-    openai.api_key = openai_api_key
-    res = openai.embeddings.create(
-        model="text-embedding-ada-002",
-        input=text
-    )
-    return res.data[0].embedding
+    """Return embedding for ``text`` using OpenAI."""
+    if AsyncOpenAI:
+        client = AsyncOpenAI(api_key=openai_api_key)
+        res = await client.embeddings.create(
+            model="text-embedding-ada-002",
+            input=text,
+        )
+        return res.data[0].embedding
+
+    def embed_sync() -> list[float]:
+        openai.api_key = openai_api_key
+        res = openai.embeddings.create(
+            model="text-embedding-ada-002",
+            input=text,
+        )
+        return res.data[0].embedding
+
+    return await asyncio.to_thread(embed_sync)
 
 def chunk_text(text, chunk_size=900, overlap=120):
     chunks = []
@@ -85,7 +108,9 @@ async def vectorize_all_files(openai_api_key, force=False, on_message=None):
     new = [f for f in current if f not in previous]
     removed = [f for f in previous if f not in current]
 
-    upserted_ids = []
+    loop = asyncio.get_running_loop()
+    upserted_ids: list[str] = []
+    errors: list[str] = []
     for fname in current:
         if fname not in changed and fname not in new and not force:
             continue
@@ -96,17 +121,31 @@ async def vectorize_all_files(openai_api_key, force=False, on_message=None):
             meta_id = f"{fname}:{idx}"
             try:
                 emb = await safe_embed(chunk, openai_api_key)
-                vector_index.upsert(vectors=[
-                    {
-                        "id": meta_id,
-                        "values": emb,
-                        "metadata": {"file": fname, "chunk": idx, "hash": current[fname]}
-                    }
-                ])
+                upsert_partial = partial(
+                    vector_index.upsert,
+                    vectors=[
+                        {
+                            "id": meta_id,
+                            "values": emb,
+                            "metadata": {
+                                "file": fname,
+                                "chunk": idx,
+                                "hash": current[fname],
+                            },
+                        }
+                    ],
+                )
+                await loop.run_in_executor(None, upsert_partial)
                 upserted_ids.append(meta_id)
-            except PineconeException as e:
+            except Exception as e:
+                logger.exception("Failed to upsert %s", meta_id)
+                msg = f"Pinecone error: {e}"
+                errors.append(msg)
                 if on_message:
-                    await on_message(f"Pinecone error: {e}")
+                    try:
+                        await on_message(msg)
+                    except Exception as msg_exc:  # pragma: no cover
+                        logger.exception("on_message failed: %s", msg_exc)
                 continue
 
     deleted_ids = []
@@ -114,17 +153,25 @@ async def vectorize_all_files(openai_api_key, force=False, on_message=None):
         for idx in range(50):
             meta_id = f"{fname}:{idx}"
             try:
-                vector_index.delete(ids=[meta_id])
+                delete_partial = partial(vector_index.delete, ids=[meta_id])
+                await loop.run_in_executor(None, delete_partial)
                 deleted_ids.append(meta_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.exception("Failed to delete %s", meta_id)
+                msg = f"Delete error: {e}"
+                errors.append(msg)
+                if on_message:
+                    try:
+                        await on_message(msg)
+                    except Exception as msg_exc:  # pragma: no cover
+                        logger.exception("on_message failed: %s", msg_exc)
 
     save_vector_meta(current)
     if on_message:
         await on_message(
             f"Vectorization complete. Added/changed: {', '.join(changed + new) if changed or new else '-'}; removed: {', '.join(removed) if removed else '-'}"
         )
-    return {"upserted": upserted_ids, "deleted": deleted_ids}
+    return {"upserted": upserted_ids, "deleted": deleted_ids, "errors": errors}
 
 async def semantic_search(query, openai_api_key, top_k=5):
     if pc is None or vector_index is None:
