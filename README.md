@@ -50,6 +50,11 @@ Unless you implement persistent storage, this memory resets each time the
 server restarts. Set `DEEPSEEK_API_KEY` in your environment to activate the
 DeepSeek integration before launching the bot.
 
+Thread ID mappings are written to `data/threads.json` with a file lock so
+concurrent processes do not corrupt the file. For better durability—especially
+before introducing client-id‑based multi-user flows—consider migrating this
+store to a lightweight database such as SQLite.
+
 ### Group chat behavior
 
 When used in a group, Arianna responds only when you address her explicitly or when you reply to one of her messages. The following triggers are recognized:
