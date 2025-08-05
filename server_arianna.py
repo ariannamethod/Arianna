@@ -6,6 +6,7 @@ import logging
 import tempfile
 
 import openai
+import httpx
 from pydub import AudioSegment
 from telethon import TelegramClient, events
 from telethon.tl.types import MessageEntityMention
@@ -105,7 +106,12 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
     """Send a short follow-up message referencing the earlier conversation."""
     await asyncio.sleep(random.uniform(FOLLOWUP_DELAY_MIN, FOLLOWUP_DELAY_MAX))
     follow_prompt = "Send a short follow-up message referencing our earlier conversation."
-    resp = await engine.ask(thread_key, follow_prompt, is_group=is_group)
+    try:
+        resp = await engine.ask(thread_key, follow_prompt, is_group=is_group)
+    except httpx.TimeoutException:
+        logger.error("Follow-up request timed out", exc_info=True)
+        await client.send_message(chat_id, "Request timed out. Please try again later.")
+        return
     if VOICE_ENABLED.get(chat_id):
         voice_path = await synthesize_voice(resp)
         await client.send_file(chat_id, voice_path, caption=resp[:1024])
@@ -127,7 +133,12 @@ async def voice_messages(event):
     if len(text.split()) < 4 or '?' not in text:
         if random.random() < SKIP_SHORT_PROB:
             return
-    resp = await engine.ask(thread_key, text, is_group=is_group)
+    try:
+        resp = await engine.ask(thread_key, text, is_group=is_group)
+    except httpx.TimeoutException:
+        logger.error("Voice message processing timed out", exc_info=True)
+        await event.reply("Request timed out. Please try again later.")
+        return
     asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
 
 @client.on(events.NewMessage(incoming=True))
@@ -214,7 +225,12 @@ async def all_messages(event):
 
     thread_key = user_id if not is_group else str(event.chat_id)
     prompt = await append_link_snippets(text)
-    resp = await engine.ask(thread_key, prompt, is_group=is_group)
+    try:
+        resp = await engine.ask(thread_key, prompt, is_group=is_group)
+    except httpx.TimeoutException:
+        logger.error("OpenAI request timed out", exc_info=True)
+        await event.reply("Request timed out. Please try again later.")
+        return
     asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
 
 async def main():
