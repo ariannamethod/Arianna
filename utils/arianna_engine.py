@@ -1,4 +1,5 @@
 import os
+import json
 import asyncio
 import httpx
 import logging
@@ -7,6 +8,10 @@ from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 from utils.deepseek_search import call_deepseek
 from utils.journal import log_event
 from utils.thread_store import load_threads, save_threads
+
+
+ASSISTANT_ID_PATH = "data/assistant_id.json"
+ASSISTANT_ID_ENV = "ARIANNA_ASSISTANT_ID"
 
 class AriannaEngine:
     """
@@ -34,9 +39,26 @@ class AriannaEngine:
         self.threads      = load_threads()  # user_id → thread_id
 
     async def setup_assistant(self):
-        """
-        Создаёт ассистента Арианны и подключает функцию GENESIS.
-        """
+        """Load existing assistant or create a new one and store its ID."""
+        if self.assistant_id:
+            return self.assistant_id
+
+        env_assistant = os.getenv(ASSISTANT_ID_ENV)
+        if env_assistant:
+            self.assistant_id = env_assistant
+            self.logger.info(f"Using assistant ID from env: {self.assistant_id}")
+            return self.assistant_id
+
+        if os.path.isfile(ASSISTANT_ID_PATH):
+            try:
+                with open(ASSISTANT_ID_PATH, "r", encoding="utf-8") as f:
+                    self.assistant_id = json.load(f).get("assistant_id")
+                if self.assistant_id:
+                    self.logger.info(f"Loaded assistant ID from {ASSISTANT_ID_PATH}: {self.assistant_id}")
+                    return self.assistant_id
+            except Exception as e:
+                self.logger.warning("Failed to read assistant ID file: %s", e)
+
         system_prompt = self._load_system_prompt()
         schema = genesis_tool_schema()  # схема функции GENESIS
 
@@ -45,7 +67,7 @@ class AriannaEngine:
             "instructions": system_prompt,
             "model":       "gpt-4.1",      # мощное ядро по твоему желанию
             "tools":       [schema],
-            "tool_resources": {}
+            "tool_resources": {},
         }
 
         async with httpx.AsyncClient() as client:
@@ -66,6 +88,14 @@ class AriannaEngine:
 
             self.assistant_id = r.json()["id"]
             self.logger.info(f"✅ Arianna Assistant created: {self.assistant_id}")
+
+        try:
+            os.makedirs(os.path.dirname(ASSISTANT_ID_PATH), exist_ok=True)
+            with open(ASSISTANT_ID_PATH, "w", encoding="utf-8") as f:
+                json.dump({"assistant_id": self.assistant_id}, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            self.logger.warning("Failed to save assistant ID: %s", e)
+
         return self.assistant_id
 
     def _load_system_prompt(self) -> str:
