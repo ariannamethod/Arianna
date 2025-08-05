@@ -63,6 +63,8 @@ FOLLOWUP_DELAY_MAX = int(os.getenv("FOLLOWUP_DELAY_MAX", 7200))  # 2 hours
 
 # Regex for detecting links
 URL_REGEX = re.compile(r"https://\S+")
+SNIPPET_CACHE: dict[str, str] = {}
+MAX_URL_SNIPPETS = int(os.getenv("MAX_URL_SNIPPETS", 2))
 
 BOT_USERNAME = ""
 BOT_ID = 0
@@ -73,8 +75,16 @@ async def append_link_snippets(text: str) -> str:
     if not urls:
         return text
     parts = [text]
-    for url in urls:
-        snippet = await extract_text_from_url(url)
+    for url in urls[:MAX_URL_SNIPPETS]:
+        if url in SNIPPET_CACHE:
+            snippet = SNIPPET_CACHE[url]
+        else:
+            try:
+                snippet = await extract_text_from_url(url)
+            except Exception as e:
+                logger.warning("Failed to fetch %s: %s", url, e)
+                snippet = "[Error fetching snippet]"
+            SNIPPET_CACHE[url] = snippet
         parts.append(f"\n[Snippet from {url}]\n{snippet[:500]}")
     return "\n".join(parts)
 
