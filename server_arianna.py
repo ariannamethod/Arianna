@@ -78,7 +78,16 @@ engine = AriannaEngine()
 openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 VOICE_ON_CMD = "/voiceon"
 VOICE_OFF_CMD = "/voiceoff"
+HELP_CMD = "/help"
 VOICE_ENABLED = {}
+HELP_TEXT = (
+    f"{SEARCH_CMD} <query> - semantic search documents\n"
+    f"{INDEX_CMD} - index documents\n"
+    f"{DEEPSEEK_CMD} <query> - ask DeepSeek\n"
+    f"{VOICE_ON_CMD} - enable voice responses\n"
+    f"{VOICE_OFF_CMD} - disable voice responses\n"
+    f"{HELP_CMD} - show this help message"
+)
 
 # --- optional behavior tuning ---
 GROUP_DELAY_MIN   = int(os.getenv("GROUP_DELAY_MIN", 120))   # 2 minutes
@@ -247,6 +256,9 @@ async def all_messages(event):
     if text.strip().lower() == VOICE_OFF_CMD:
         VOICE_ENABLED[event.chat_id] = False
         await event.reply("Voice responses disabled")
+        return
+    if text.strip().lower() == HELP_CMD:
+        await event.reply(HELP_TEXT)
         return
 
     if cmd == DEEPSEEK_CMD:
