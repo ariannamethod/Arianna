@@ -81,6 +81,7 @@ class AriannaGenesis:
         self._date_last_run = None
         self._running = False
         self._task = None
+        self._rng = random.Random()
 
     async def run(self):
         """
@@ -125,10 +126,10 @@ class AriannaGenesis:
 
     def _random_time_between(self, now, hour_start, hour_end):
         seed = int(now.strftime('%Y%m%d')) + hour_start + hour_end
-        random.seed(seed)
-        h = random.randint(hour_start, hour_end)
-        m = random.randint(0, 59)
-        s = random.randint(0, 59)
+        self._rng.seed(seed)
+        h = self._rng.randint(hour_start, hour_end)
+        m = self._rng.randint(0, 59)
+        s = self._rng.randint(0, 59)
         return now.replace(hour=h, minute=m, second=s, microsecond=0)
 
     async def _sleep_until_next_day(self):
