@@ -97,6 +97,9 @@ FOLLOWUP_DELAY_MAX = int(os.getenv("FOLLOWUP_DELAY_MAX", 7200))  # 2 hours
 BOT_USERNAME = ""
 BOT_ID = 0
 
+DISABLE_FORMATTING = os.getenv("TELEGRAM_DISABLE_FORMATTING")
+PARSE_MODE = None if DISABLE_FORMATTING else os.getenv("TELEGRAM_PARSE_MODE", "MarkdownV2").lower()
+
 async def transcribe_voice(file_path: str) -> str:
     """Transcribe an audio file using OpenAI Whisper."""
     try:
@@ -152,17 +155,18 @@ def _delay(is_group: bool) -> float:
 
 async def send_delayed_response(event, resp: str, is_group: bool, thread_key: str):
     """Send the reply after a randomized delay and schedule optional follow-up."""
+    await client.send_chat_action(event.chat_id, 'typing')
     await asyncio.sleep(_delay(is_group))
     if VOICE_ENABLED.get(event.chat_id):
         voice_path = await synthesize_voice(resp)
         if os.path.exists(voice_path):
-            await client.send_file(event.chat_id, voice_path, caption=resp[:1024])
+            await client.send_file(event.chat_id, voice_path, caption=resp[:1024], parse_mode=PARSE_MODE)
             os.remove(voice_path)
         else:
-            await client.send_message(event.chat_id, voice_path)
+            await client.send_message(event.chat_id, voice_path, parse_mode=PARSE_MODE)
     else:
         async def send(chunk: str) -> None:
-            await client.send_message(event.chat_id, chunk)
+            await client.send_message(event.chat_id, chunk, parse_mode=PARSE_MODE)
         await dispatch_response(send, resp)
     if random.random() < FOLLOWUP_PROB:
         asyncio.create_task(schedule_followup(event.chat_id, thread_key, is_group))
@@ -175,18 +179,18 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
         resp = await engine.ask(thread_key, follow_prompt, is_group=is_group)
     except httpx.TimeoutException:
         logger.error("Follow-up request timed out", exc_info=True)
-        await client.send_message(chat_id, "Request timed out. Please try again later.")
+        await client.send_message(chat_id, "Request timed out. Please try again later.", parse_mode=PARSE_MODE)
         return
     if VOICE_ENABLED.get(chat_id):
         voice_path = await synthesize_voice(resp)
         if os.path.exists(voice_path):
-            await client.send_file(chat_id, voice_path, caption=resp[:1024])
+            await client.send_file(chat_id, voice_path, caption=resp[:1024], parse_mode=PARSE_MODE)
             os.remove(voice_path)
         else:
-            await client.send_message(chat_id, voice_path)
+            await client.send_message(chat_id, voice_path, parse_mode=PARSE_MODE)
     else:
         async def send(chunk: str) -> None:
-            await client.send_message(chat_id, chunk)
+            await client.send_message(chat_id, chunk, parse_mode=PARSE_MODE)
         await dispatch_response(send, resp)
 
 @client.on(events.NewMessage(func=lambda e: bool(e.message.voice)))
