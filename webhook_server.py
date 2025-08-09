@@ -17,6 +17,7 @@ from utils.bot_handlers import (
     SEARCH_CMD,
     INDEX_CMD,
     SKIP_SHORT_PROB,
+    escape_markdown,
 )
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -51,7 +52,11 @@ async def send_message(chat_id: int, text: str) -> None:
     async with httpx.AsyncClient() as client:
         await client.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": chat_id, "text": text},
+            json={
+                "chat_id": chat_id,
+                "text": escape_markdown(text),
+                "parse_mode": "Markdown",
+            },
             timeout=30,
         )
 

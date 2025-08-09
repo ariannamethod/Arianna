@@ -49,3 +49,10 @@ def test_dispatch_response_splits():
     assert len(parts) == 2
     assert parts[0] == "a" * 4000
     assert parts[1] == "a" * 1000
+
+
+def test_escape_markdown_handles_links_and_code_blocks():
+    text = "Check https://example.com/test_underscore and code:\n```python\nprint(1)\n```"
+    escaped = bh.escape_markdown(text)
+    assert r"https://example\.com/test\_underscore" in escaped
+    assert "```python\nprint(1)\n```" in escaped

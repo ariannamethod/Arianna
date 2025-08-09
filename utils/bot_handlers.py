@@ -6,6 +6,18 @@ from typing import Callable, Awaitable, Optional
 from utils.split_message import split_message
 from utils.text_helpers import extract_text_from_url
 
+MD_SPECIAL_CHARS = r"_*[]()~`>#+-=|{}.!"
+
+
+def escape_markdown(text: str) -> str:
+    """Escape Telegram Markdown special characters outside code blocks."""
+
+    def _escape(segment: str) -> str:
+        return re.sub(f"([{re.escape(MD_SPECIAL_CHARS)}])", r"\\\1", segment)
+
+    parts = re.split(r"(```.*?```)", text, flags=re.DOTALL)
+    return "".join(part if part.startswith("```") else _escape(part) for part in parts)
+
 DEEPSEEK_CMD = "/ds"
 SEARCH_CMD = "/search"
 INDEX_CMD = "/index"

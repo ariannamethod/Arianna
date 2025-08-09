@@ -24,6 +24,7 @@ from utils.bot_handlers import (
     SEARCH_CMD,
     INDEX_CMD,
     SKIP_SHORT_PROB,
+    escape_markdown,
 )
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -159,10 +160,18 @@ async def send_delayed_response(event, resp: str, is_group: bool, thread_key: st
             await client.send_file(event.chat_id, voice_path, caption=resp[:1024])
             os.remove(voice_path)
         else:
-            await client.send_message(event.chat_id, voice_path)
+            await client.send_message(
+                event.chat_id,
+                escape_markdown(voice_path),
+                parse_mode="Markdown",
+            )
     else:
         async def send(chunk: str) -> None:
-            await client.send_message(event.chat_id, chunk)
+            await client.send_message(
+                event.chat_id,
+                escape_markdown(chunk),
+                parse_mode="Markdown",
+            )
         await dispatch_response(send, resp)
     if random.random() < FOLLOWUP_PROB:
         asyncio.create_task(schedule_followup(event.chat_id, thread_key, is_group))
@@ -175,7 +184,11 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
         resp = await engine.ask(thread_key, follow_prompt, is_group=is_group)
     except httpx.TimeoutException:
         logger.error("Follow-up request timed out", exc_info=True)
-        await client.send_message(chat_id, "Request timed out. Please try again later.")
+        await client.send_message(
+            chat_id,
+            escape_markdown("Request timed out. Please try again later."),
+            parse_mode="Markdown",
+        )
         return
     if VOICE_ENABLED.get(chat_id):
         voice_path = await synthesize_voice(resp)
@@ -183,10 +196,18 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
             await client.send_file(chat_id, voice_path, caption=resp[:1024])
             os.remove(voice_path)
         else:
-            await client.send_message(chat_id, voice_path)
+            await client.send_message(
+                chat_id,
+                escape_markdown(voice_path),
+                parse_mode="Markdown",
+            )
     else:
         async def send(chunk: str) -> None:
-            await client.send_message(chat_id, chunk)
+            await client.send_message(
+                chat_id,
+                escape_markdown(chunk),
+                parse_mode="Markdown",
+            )
         await dispatch_response(send, resp)
 
 @client.on(events.NewMessage(func=lambda e: bool(e.message.voice)))
@@ -228,7 +249,10 @@ async def all_messages(event):
             await event.reply("No relevant documents found.")
         else:
             async def send(part: str) -> None:
-                await event.reply(part)
+                await event.reply(
+                    escape_markdown(part),
+                    parse_mode="Markdown",
+                )
             for ch in chunks:
                 await dispatch_response(send, ch)
         return
@@ -236,7 +260,10 @@ async def all_messages(event):
     if cmd == INDEX_CMD:
         await event.reply("Indexing documents, please wait...")
         async def sender(msg):
-            await event.reply(msg)
+            await event.reply(
+                escape_markdown(msg),
+                parse_mode="Markdown",
+            )
         await vectorize_all_files(engine.openai_key, force=True, on_message=sender)
         await event.reply("Indexing complete.")
         return
@@ -258,7 +285,10 @@ async def all_messages(event):
             return
         resp = await engine.deepseek_reply(arg)
         async def send(part: str) -> None:
-            await event.reply(part)
+            await event.reply(
+                escape_markdown(part),
+                parse_mode="Markdown",
+            )
         await dispatch_response(send, resp)
         return
 
