@@ -56,7 +56,7 @@ source .env
 python -m dotenv run -- python server_arianna.py
 ```
 
-Important variables include `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `OPENAI_API_KEY` and `DEEPSEEK_API_KEY`. Set `TELEGRAM_BOT_TOKEN` (or legacy `TELEGRAM_TOKEN`) to run the client in bot mode, or supply `TELEGRAM_SESSION_STRING` to authorize without a phone number. If neither is provided, `TELEGRAM_PHONE` is used for user mode. Pinecone settings (`PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_ENV`) are also required if you use semantic search.
+Important variables include `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_PHONE`, `TELEGRAM_SESSION_STRING`, `OPENAI_API_KEY`, and `DEEPSEEK_API_KEY`. These must all be provided in the environment; the application will exit if any are missing. Set `TELEGRAM_BOT_TOKEN` (or legacy `TELEGRAM_TOKEN`) to run the client in bot mode. Pinecone settings (`PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_ENV`) are also required if you use semantic search.
 Several optional variables fine‑tune the bot's behavior:
 
 - `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 120–600).
