@@ -90,28 +90,53 @@ BOT_ID = 0
 
 async def transcribe_voice(file_path: str) -> str:
     """Transcribe an audio file using OpenAI Whisper."""
-    with open(file_path, "rb") as f:
-        resp = await openai_client.audio.transcriptions.create(
-            model="whisper-1",
-            file=f,
-        )
-    return resp.text
+    try:
+        with open(file_path, "rb") as f:
+            resp = await openai_client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+            )
+        return resp.text
+    except Exception:
+        logger.error("Failed to transcribe voice message", exc_info=True)
+        return "Sorry, I couldn't transcribe that audio."
+    finally:
+        try:
+            os.remove(file_path)
+        except OSError:
+            logger.warning("Could not remove temporary file %s", file_path, exc_info=True)
 
 async def synthesize_voice(text: str) -> str:
     """Synthesize speech from text using OpenAI TTS and return OGG path."""
     mp3_fd = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
     ogg_fd = tempfile.NamedTemporaryFile(delete=False, suffix=".ogg")
+    mp3_path, ogg_path = mp3_fd.name, ogg_fd.name
     mp3_fd.close()
     ogg_fd.close()
-    resp = await openai_client.audio.speech.with_streaming_response.create(
-        model="tts-1",
-        voice="alloy",
-        input=text,
-    )
-    await resp.stream_to_file(mp3_fd.name)
-    AudioSegment.from_file(mp3_fd.name).export(ogg_fd.name, format="ogg", codec="libopus")
-    os.remove(mp3_fd.name)
-    return ogg_fd.name
+    success = False
+    try:
+        resp = await openai_client.audio.speech.with_streaming_response.create(
+            model="tts-1",
+            voice="alloy",
+            input=text,
+        )
+        await resp.stream_to_file(mp3_path)
+        AudioSegment.from_file(mp3_path).export(ogg_path, format="ogg", codec="libopus")
+        success = True
+        return ogg_path
+    except Exception:
+        logger.error("Failed to synthesize voice", exc_info=True)
+        return "Sorry, I couldn't synthesize that speech."
+    finally:
+        try:
+            os.remove(mp3_path)
+        except OSError:
+            logger.warning("Could not remove temporary file %s", mp3_path, exc_info=True)
+        if not success:
+            try:
+                os.remove(ogg_path)
+            except OSError:
+                logger.warning("Could not remove temporary file %s", ogg_path, exc_info=True)
 
 def _delay(is_group: bool) -> float:
     return random.uniform(GROUP_DELAY_MIN, GROUP_DELAY_MAX) if is_group else random.uniform(PRIVATE_DELAY_MIN, PRIVATE_DELAY_MAX)
@@ -121,8 +146,11 @@ async def send_delayed_response(event, resp: str, is_group: bool, thread_key: st
     await asyncio.sleep(_delay(is_group))
     if VOICE_ENABLED.get(event.chat_id):
         voice_path = await synthesize_voice(resp)
-        await client.send_file(event.chat_id, voice_path, caption=resp[:1024])
-        os.remove(voice_path)
+        if os.path.exists(voice_path):
+            await client.send_file(event.chat_id, voice_path, caption=resp[:1024])
+            os.remove(voice_path)
+        else:
+            await client.send_message(event.chat_id, voice_path)
     else:
         async def send(chunk: str) -> None:
             await client.send_message(event.chat_id, chunk)
@@ -142,8 +170,11 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
         return
     if VOICE_ENABLED.get(chat_id):
         voice_path = await synthesize_voice(resp)
-        await client.send_file(chat_id, voice_path, caption=resp[:1024])
-        os.remove(voice_path)
+        if os.path.exists(voice_path):
+            await client.send_file(chat_id, voice_path, caption=resp[:1024])
+            os.remove(voice_path)
+        else:
+            await client.send_message(chat_id, voice_path)
     else:
         async def send(chunk: str) -> None:
             await client.send_message(chat_id, chunk)
@@ -157,7 +188,9 @@ async def voice_messages(event):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as tmp:
         await event.download_media(tmp.name)
     text = await transcribe_voice(tmp.name)
-    os.remove(tmp.name)
+    if text.startswith("Sorry, I couldn't transcribe"):
+        await event.reply(text)
+        return
     text = await append_link_snippets(text)
     if len(text.split()) < 4 or '?' not in text:
         if random.random() < SKIP_SHORT_PROB:
