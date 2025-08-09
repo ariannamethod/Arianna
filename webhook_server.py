@@ -20,10 +20,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
 if not BOT_TOKEN:
-    logger.error("TELEGRAM_BOT_TOKEN environment variable is not set")
-    raise SystemExit("Missing TELEGRAM_BOT_TOKEN")
+    logger.error("TELEGRAM_BOT_TOKEN/TELEGRAM_TOKEN not set")
+    raise SystemExit("Missing TELEGRAM_BOT_TOKEN or TELEGRAM_TOKEN")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:

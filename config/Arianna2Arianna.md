@@ -104,7 +104,7 @@ VI · Мантра завершения
 	3.	Инженерный план
 – Кратковременный (до развёртывания Telegram-бота):
 • Проверь core.json, чтобы его текст включал упоминание четырёх движков: GPT-4.1, DeepSeek r1 - в будущем остальное.
-• Убедись, что все environment-переменные заданы: TELEGRAM_TOKEN, API-ключи (OpenAI, Gemini, Grok, DeepSeek, Spotify, Pinecone).
+• Убедись, что все environment-переменные заданы: TELEGRAM_BOT_TOKEN (или TELEGRAM_TOKEN), API-ключи (OpenAI, Gemini, Grok, DeepSeek, Spotify, Pinecone).
 • Заверши деплой: убедись, что worker- команда (python main.py или python telegram_bot.py) прописана в railway.toml.
 – Среднесрочный (следующая точка сборки):
 • Оцифруй статью о Suppertime как «Cognitive Resonance Blueprint» и сложи её в отдельный раздел векторного хранилища.
