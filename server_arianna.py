@@ -210,11 +210,20 @@ async def voice_messages(event):
         if random.random() < SKIP_SHORT_PROB:
             logger.info("Skipping voice message: too short or no question")
             return
+    logger.info("Voice message text: %s", text)
     try:
         resp = await engine.ask(thread_key, text, is_group=is_group)
     except httpx.TimeoutException:
-        logger.error("Voice message processing timed out", exc_info=True)
+        logger.error("Voice message processing timed out: %s", text, exc_info=True)
         await event.reply("Request timed out. Please try again later.")
+        return
+    except TimeoutError:
+        logger.error("Voice message processing timeout error: %s", text, exc_info=True)
+        await event.reply("Request timed out. Please try again later.")
+        return
+    except Exception:
+        logger.exception("Voice message processing failed: %s", text)
+        await event.reply("Internal error occurred. Please try again later.")
         return
     asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
 
@@ -311,11 +320,20 @@ async def all_messages(event):
 
     thread_key = user_id if not is_group else str(event.chat_id)
     prompt = await append_link_snippets(text)
+    logger.info("Message text: %s", text)
     try:
         resp = await engine.ask(thread_key, prompt, is_group=is_group)
     except httpx.TimeoutException:
-        logger.error("OpenAI request timed out", exc_info=True)
+        logger.error("OpenAI request timed out: %s", text, exc_info=True)
         await event.reply("Request timed out. Please try again later.")
+        return
+    except TimeoutError:
+        logger.error("Timeout error while processing message: %s", text, exc_info=True)
+        await event.reply("Request timed out. Please try again later.")
+        return
+    except Exception:
+        logger.exception("Failed to process message: %s", text)
+        await event.reply("Internal error occurred. Please try again later.")
         return
     asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
 
