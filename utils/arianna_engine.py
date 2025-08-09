@@ -4,14 +4,16 @@ import asyncio
 import httpx
 import logging
 import time
+import textwrap
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 from utils.deepseek_search import call_deepseek
 from utils.journal import log_event
-from utils.thread_store_sqlite import load_threads, save_threads
+from utils.thread_store_sqlite import load_threads, save_threads, touch_thread
 
 
 ASSISTANT_ID_PATH = "data/assistant_id.json"
 ASSISTANT_ID_ENV = "ARIANNA_ASSISTANT_ID"
+MAX_THREAD_MESSAGES = int(os.getenv("THREAD_MAX_MESSAGES", "20"))
 
 class AriannaEngine:
     """
@@ -112,6 +114,41 @@ class AriannaEngine:
             is_group=is_group
         )
 
+    async def _trim_thread(self, tid: str) -> None:
+        if MAX_THREAD_MESSAGES <= 0:
+            return
+        try:
+            resp = await self.client.get(
+                f"https://api.openai.com/v1/threads/{tid}/messages",
+            )
+            resp.raise_for_status()
+            msgs = resp.json().get("data", [])
+            if len(msgs) <= MAX_THREAD_MESSAGES:
+                return
+            to_trim = msgs[MAX_THREAD_MESSAGES - 1:]
+            text = []
+            for m in reversed(to_trim):
+                cont = m.get("content", [])
+                if cont and cont[0].get("type") == "text":
+                    text.append(f"{m.get('role', 'user')}: {cont[0]['text']['value']}")
+            if text:
+                summary = textwrap.shorten(" ".join(text), 1000, placeholder="...")
+                await self.client.post(
+                    f"https://api.openai.com/v1/threads/{tid}/messages",
+                    json={"role": "system", "content": f"Summary of earlier conversation: {summary}"},
+                )
+            for m in to_trim:
+                try:
+                    await self.client.delete(
+                        f"https://api.openai.com/v1/threads/{tid}/messages/{m['id']}"
+                    )
+                except Exception:
+                    self.logger.debug(
+                        "Failed to delete message %s during trim", m["id"], exc_info=True
+                    )
+        except Exception:
+            self.logger.warning("Failed to trim thread %s", tid, exc_info=True)
+
     async def _get_thread(self, key: str) -> str:
         """Get or create a thread for the given key."""
         if key not in self.threads:
@@ -125,8 +162,11 @@ class AriannaEngine:
             except httpx.TimeoutException:
                 self.logger.error("OpenAI request timed out when creating thread")
                 raise
-            save_threads(self.threads)
-        return self.threads[key]
+            save_threads({key: self.threads[key]})
+        tid = self.threads[key]
+        touch_thread(key)
+        await self._trim_thread(tid)
+        return tid
 
     async def ask(self, thread_key: str, prompt: str, is_group: bool=False) -> str:
         """
