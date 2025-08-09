@@ -36,19 +36,28 @@ if not DEEPSEEK_API_KEY:
     logger.error("DEEPSEEK_API_KEY environment variable is not set")
     raise SystemExit("Missing DEEPSEEK_API_KEY. Set the environment variable and restart the application.")
 
-API_ID = int(os.getenv("TELEGRAM_API_ID", 20973755))
-API_HASH = os.getenv("TELEGRAM_API_HASH", "51173cd91874b5f7576b2012f08f40f0")
-PHONE = os.getenv("TELEGRAM_PHONE", "+972584038033")
+api_id_str = os.getenv("TELEGRAM_API_ID")
+if not api_id_str:
+    logger.error("TELEGRAM_API_ID environment variable is not set")
+    raise SystemExit("Missing TELEGRAM_API_ID. Set the environment variable and restart the application.")
+API_ID = int(api_id_str)
+
+API_HASH = os.getenv("TELEGRAM_API_HASH")
+if not API_HASH:
+    logger.error("TELEGRAM_API_HASH environment variable is not set")
+    raise SystemExit("Missing TELEGRAM_API_HASH. Set the environment variable and restart the application.")
+
+PHONE = os.getenv("TELEGRAM_PHONE")
+if not PHONE:
+    logger.error("TELEGRAM_PHONE environment variable is not set")
+    raise SystemExit("Missing TELEGRAM_PHONE. Set the environment variable and restart the application.")
+
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
-SESSION_STRING = os.getenv(
-    "TELEGRAM_SESSION_STRING",
-    (
-        "1BJWap1sBuwLNE3K0r3YyH19KqYjpKAgTfUalQz7J_sJbTtN5KiHLMjYVxyA2-qZOivMKx9U_AKQ3H2DGsN1CjCrtgB7PEgWiiwvcxMC7aMx04co"
-        "LG6RgnFl0C2jLL6HtDzZS8VrS-L5auPZ7Rw_gm-Oe532NHMZdh1yA2pyyjd2aVJpFJGWULs0P0mGYwXSb5BNTrP2vpyWTCcZa8Ei9KEP6y_nBDtVz"
-        "FBKwxBDn5_3wEBjg9SKUS48qZnoIdeD5gsQICjFi0x29oNwIYvOIjnBsg72RfCdaukvGu2yFcDop1Z752a2NUrs0DYXvr990zVwxdlLg1RH6Gk-Ke"
-        "MkQDJoN_g8BRrI="
-    ),
-)
+
+SESSION_STRING = os.getenv("TELEGRAM_SESSION_STRING")
+if not SESSION_STRING:
+    logger.error("TELEGRAM_SESSION_STRING environment variable is not set")
+    raise SystemExit("Missing TELEGRAM_SESSION_STRING. Set the environment variable and restart the application.")
 
 
 def create_telegram_client(
