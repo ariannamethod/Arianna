@@ -18,12 +18,9 @@ from utils.split_message import split_message
 from utils.vector_store import semantic_search, vectorize_all_files
 from utils.text_helpers import extract_text_from_url
 from utils.deepseek_search import DEEPSEEK_ENABLED
+from utils.logging_config import setup_logging, logging_context
 
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -148,134 +145,142 @@ async def send_delayed_response(event, resp: str, is_group: bool, thread_key: st
 
 async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
     """Send a short follow-up message referencing the earlier conversation."""
-    await asyncio.sleep(random.uniform(FOLLOWUP_DELAY_MIN, FOLLOWUP_DELAY_MAX))
-    follow_prompt = "Send a short follow-up message referencing our earlier conversation."
-    try:
-        resp = await engine.ask(thread_key, follow_prompt, is_group=is_group)
-    except httpx.TimeoutException:
-        logger.error("Follow-up request timed out", exc_info=True)
-        await client.send_message(chat_id, "Request timed out. Please try again later.")
-        return
-    if VOICE_ENABLED.get(chat_id):
-        voice_path = await synthesize_voice(resp)
-        await client.send_file(chat_id, voice_path, caption=resp[:1024])
-        os.remove(voice_path)
-    else:
-        for chunk in split_message(resp):
-            await client.send_message(chat_id, chunk)
+    user_id = thread_key.split(":", 1)[1] if is_group and ":" in thread_key else thread_key
+    with logging_context(chat_id, user_id):
+        await asyncio.sleep(random.uniform(FOLLOWUP_DELAY_MIN, FOLLOWUP_DELAY_MAX))
+        follow_prompt = "Send a short follow-up message referencing our earlier conversation."
+        try:
+            resp = await engine.ask(thread_key, follow_prompt, is_group=is_group)
+        except httpx.TimeoutException:
+            logger.error("Follow-up request timed out", exc_info=True)
+            await client.send_message(chat_id, "Request timed out. Please try again later.")
+            return
+        if VOICE_ENABLED.get(chat_id):
+            voice_path = await synthesize_voice(resp)
+            await client.send_file(chat_id, voice_path, caption=resp[:1024])
+            os.remove(voice_path)
+        else:
+            for chunk in split_message(resp):
+                await client.send_message(chat_id, chunk)
 
 @client.on(events.NewMessage(func=lambda e: bool(e.message.voice)))
 async def voice_messages(event):
     is_group = event.is_group
     user_id = str(event.sender_id)
-    thread_key = f"{event.chat_id}:{event.sender_id}" if is_group else user_id
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as tmp:
-        await event.download_media(tmp.name)
-    text = await transcribe_voice(tmp.name)
-    os.remove(tmp.name)
-    text = await append_link_snippets(text)
-    if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
+    with logging_context(event.chat_id, user_id):
+        logger.info("Received voice message")
+        thread_key = f"{event.chat_id}:{event.sender_id}" if is_group else user_id
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as tmp:
+            await event.download_media(tmp.name)
+        text = await transcribe_voice(tmp.name)
+        os.remove(tmp.name)
+        text = await append_link_snippets(text)
+        if len(text.split()) < 4 or '?' not in text:
+            if random.random() < SKIP_SHORT_PROB:
+                return
+        try:
+            resp = await engine.ask(thread_key, text, is_group=is_group)
+        except httpx.TimeoutException:
+            logger.error("Voice message processing timed out", exc_info=True)
+            await event.reply("Request timed out. Please try again later.")
             return
-    try:
-        resp = await engine.ask(thread_key, text, is_group=is_group)
-    except httpx.TimeoutException:
-        logger.error("Voice message processing timed out", exc_info=True)
-        await event.reply("Request timed out. Please try again later.")
-        return
-    asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
+        asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
 
 @client.on(events.NewMessage(incoming=True))
 async def all_messages(event):
     if event.out:
         return
     user_id = str(event.sender_id)
-    text = event.raw_text or ""
+    with logging_context(event.chat_id, user_id):
+        text = event.raw_text or ""
+        logger.info("Received message")
 
-    if text.strip().lower().startswith(SEARCH_CMD):
-        query = text.strip()[len(SEARCH_CMD):].lstrip()
-        if not query:
+        if text.strip().lower().startswith(SEARCH_CMD):
+            query = text.strip()[len(SEARCH_CMD):].lstrip()
+            if not query:
+                return
+            chunks = await semantic_search(query, engine.openai_key)
+            if not chunks:
+                await event.reply("No relevant documents found.")
+            else:
+                for ch in chunks:
+                    for part in split_message(ch):
+                        await event.reply(part)
             return
-        chunks = await semantic_search(query, engine.openai_key)
-        if not chunks:
-            await event.reply("No relevant documents found.")
+
+        if text.strip().lower().startswith(INDEX_CMD):
+            await event.reply("Indexing documents, please wait...")
+
+            async def sender(msg):
+                await event.reply(msg)
+
+            await vectorize_all_files(engine.openai_key, force=True, on_message=sender)
+            await event.reply("Indexing complete.")
+            return
+
+        if text.strip().lower() == VOICE_ON_CMD:
+            VOICE_ENABLED[event.chat_id] = True
+            await event.reply("Voice responses enabled")
+            return
+        if text.strip().lower() == VOICE_OFF_CMD:
+            VOICE_ENABLED[event.chat_id] = False
+            await event.reply("Voice responses disabled")
+            return
+
+        if text.strip().lower().startswith(DEEPSEEK_CMD):
+            if not DEEPSEEK_ENABLED:
+                await event.reply("DeepSeek integration is not configured")
+                return
+            query = text.strip()[len(DEEPSEEK_CMD):].lstrip()
+            if not query:
+                return
+            resp = await engine.deepseek_reply(query)
+            for chunk in split_message(resp):
+                await event.reply(chunk)
+            return
+
+        is_group = event.is_group
+        is_reply = False
+        if event.is_reply:
+            replied = await event.get_reply_message()
+            if replied and replied.sender_id == BOT_ID:
+                is_reply = True
+
+        mentioned = False
+        if not is_group:
+            mentioned = True
         else:
-            for ch in chunks:
-                for part in split_message(ch):
-                    await event.reply(part)
-        return
+            if re.search(r"\b(arianna|арианна)\b", text, re.I):
+                mentioned = True
+            elif BOT_USERNAME and f"@{BOT_USERNAME}".lower() in text.lower():
+                mentioned = True
+            if event.message.entities:
+                for ent in event.message.entities:
+                    if isinstance(ent, MessageEntityMention):
+                        ent_text = text[ent.offset: ent.offset + ent.length]
+                        if ent_text[1:].lower() == BOT_USERNAME:
+                            mentioned = True
+                            break
 
-    if text.strip().lower().startswith(INDEX_CMD):
-        await event.reply("Indexing documents, please wait...")
-        async def sender(msg):
-            await event.reply(msg)
-        await vectorize_all_files(engine.openai_key, force=True, on_message=sender)
-        await event.reply("Indexing complete.")
-        return
-
-    if text.strip().lower() == VOICE_ON_CMD:
-        VOICE_ENABLED[event.chat_id] = True
-        await event.reply("Voice responses enabled")
-        return
-    if text.strip().lower() == VOICE_OFF_CMD:
-        VOICE_ENABLED[event.chat_id] = False
-        await event.reply("Voice responses disabled")
-        return
-
-    if text.strip().lower().startswith(DEEPSEEK_CMD):
-        if not DEEPSEEK_ENABLED:
-            await event.reply("DeepSeek integration is not configured")
-            return
-        query = text.strip()[len(DEEPSEEK_CMD):].lstrip()
-        if not query:
-            return
-        resp = await engine.deepseek_reply(query)
-        for chunk in split_message(resp):
-            await event.reply(chunk)
-        return
-
-    is_group = event.is_group
-    is_reply = False
-    if event.is_reply:
-        replied = await event.get_reply_message()
-        if replied and replied.sender_id == BOT_ID:
-            is_reply = True
-
-    mentioned = False
-    if not is_group:
-        mentioned = True
-    else:
-        if re.search(r"\b(arianna|арианна)\b", text, re.I):
+        if is_reply:
             mentioned = True
-        elif BOT_USERNAME and f"@{BOT_USERNAME}".lower() in text.lower():
-            mentioned = True
-        if event.message.entities:
-            for ent in event.message.entities:
-                if isinstance(ent, MessageEntityMention):
-                    ent_text = text[ent.offset: ent.offset + ent.length]
-                    if ent_text[1:].lower() == BOT_USERNAME:
-                        mentioned = True
-                        break
 
-    if is_reply:
-        mentioned = True
-
-    if not (mentioned or is_reply):
-        return
-
-    if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
+        if not (mentioned or is_reply):
             return
 
-    thread_key = user_id if not is_group else str(event.chat_id)
-    prompt = await append_link_snippets(text)
-    try:
-        resp = await engine.ask(thread_key, prompt, is_group=is_group)
-    except httpx.TimeoutException:
-        logger.error("OpenAI request timed out", exc_info=True)
-        await event.reply("Request timed out. Please try again later.")
-        return
-    asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
+        if len(text.split()) < 4 or '?' not in text:
+            if random.random() < SKIP_SHORT_PROB:
+                return
+
+        thread_key = user_id if not is_group else str(event.chat_id)
+        prompt = await append_link_snippets(text)
+        try:
+            resp = await engine.ask(thread_key, prompt, is_group=is_group)
+        except httpx.TimeoutException:
+            logger.error("OpenAI request timed out", exc_info=True)
+            await event.reply("Request timed out. Please try again later.")
+            return
+        asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
 
 async def main():
     global BOT_USERNAME, BOT_ID

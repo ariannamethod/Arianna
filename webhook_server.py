@@ -12,12 +12,9 @@ from utils.split_message import split_message
 from utils.vector_store import semantic_search, vectorize_all_files
 from utils.text_helpers import extract_text_from_url
 from utils.deepseek_search import DEEPSEEK_ENABLED
+from utils.logging_config import setup_logging, logging_context
 
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL, logging.INFO),
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("TELEGRAM_TOKEN")
@@ -102,78 +99,84 @@ async def telegram_webhook(request: Request) -> dict:
 
     chat = message["chat"]
     chat_id = chat["id"]
-    is_group = chat.get("type") in {"group", "supergroup"}
-
+    user_id = (message.get("from") or {}).get("id")
     text = message.get("text", "")
     if not text:
         return {"ok": True}
 
-    if text.strip().lower().startswith(SEARCH_CMD):
-        query = text.strip()[len(SEARCH_CMD):].lstrip()
-        if query:
-            chunks = await semantic_search(query, engine.openai_key)
-            if not chunks:
-                await send_message(chat_id, "No relevant documents found.")
-            else:
-                for ch in chunks:
-                    for part in split_message(ch):
-                        await send_message(chat_id, part)
-        return {"ok": True}
+    is_group = chat.get("type") in {"group", "supergroup"}
+    with logging_context(chat_id, user_id):
+        logger.info("Received webhook message")
 
-    if text.strip().lower().startswith(INDEX_CMD):
-        await send_message(chat_id, "Indexing documents, please wait...")
-        async def sender(msg: str) -> None:
-            await send_message(chat_id, msg)
-        await vectorize_all_files(engine.openai_key, force=True, on_message=sender)
-        await send_message(chat_id, "Indexing complete.")
-        return {"ok": True}
-
-    if text.strip().lower().startswith(DEEPSEEK_CMD):
-        if not DEEPSEEK_ENABLED:
-            await send_message(chat_id, "DeepSeek integration is not configured")
+        if text.strip().lower().startswith(SEARCH_CMD):
+            query = text.strip()[len(SEARCH_CMD):].lstrip()
+            if query:
+                chunks = await semantic_search(query, engine.openai_key)
+                if not chunks:
+                    await send_message(chat_id, "No relevant documents found.")
+                else:
+                    for ch in chunks:
+                        for part in split_message(ch):
+                            await send_message(chat_id, part)
             return {"ok": True}
-        query = text.strip()[len(DEEPSEEK_CMD):].lstrip()
-        if query:
-            resp = await engine.deepseek_reply(query)
-            for part in split_message(resp):
-                await send_message(chat_id, part)
-        return {"ok": True}
 
-    mentioned = False
-    if not is_group:
-        mentioned = True
-    else:
-        if re.search(r"\b(arianna|арианна)\b", text, re.I):
+        if text.strip().lower().startswith(INDEX_CMD):
+            await send_message(chat_id, "Indexing documents, please wait...")
+
+            async def sender(msg: str) -> None:
+                await send_message(chat_id, msg)
+
+            await vectorize_all_files(engine.openai_key, force=True, on_message=sender)
+            await send_message(chat_id, "Indexing complete.")
+            return {"ok": True}
+
+        if text.strip().lower().startswith(DEEPSEEK_CMD):
+            if not DEEPSEEK_ENABLED:
+                await send_message(chat_id, "DeepSeek integration is not configured")
+                return {"ok": True}
+            query = text.strip()[len(DEEPSEEK_CMD):].lstrip()
+            if query:
+                resp = await engine.deepseek_reply(query)
+                for part in split_message(resp):
+                    await send_message(chat_id, part)
+            return {"ok": True}
+
+        mentioned = False
+        if not is_group:
             mentioned = True
-        elif BOT_USERNAME and f"@{BOT_USERNAME}" in text.lower():
-            mentioned = True
-        if message.get("entities"):
-            for ent in message["entities"]:
-                if ent.get("type") == "mention":
-                    ent_text = text[ent["offset"]: ent["offset"] + ent["length"]]
-                    if ent_text[1:].lower() == BOT_USERNAME:
-                        mentioned = True
-                        break
-        if message.get("reply_to_message"):
-            if message["reply_to_message"].get("from", {}).get("id") == BOT_ID:
+        else:
+            if re.search(r"\b(arianna|арианна)\b", text, re.I):
                 mentioned = True
+            elif BOT_USERNAME and f"@{BOT_USERNAME}" in text.lower():
+                mentioned = True
+            if message.get("entities"):
+                for ent in message["entities"]:
+                    if ent.get("type") == "mention":
+                        ent_text = text[ent["offset"]: ent["offset"] + ent["length"]]
+                        if ent_text[1:].lower() == BOT_USERNAME:
+                            mentioned = True
+                            break
+            if message.get("reply_to_message"):
+                if message["reply_to_message"].get("from", {}).get("id") == BOT_ID:
+                    mentioned = True
 
-    if not mentioned:
-        return {"ok": True}
-
-    if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
+        if not mentioned:
             return {"ok": True}
 
-    thread_key = str(chat_id) if is_group else str(message["from"]["id"])
-    prompt = await append_link_snippets(text)
-    try:
-        resp = await engine.ask(thread_key, prompt, is_group=is_group)
-    except httpx.TimeoutException:
-        await send_message(chat_id, "Request timed out. Please try again later.")
-        return {"ok": True}
+        if len(text.split()) < 4 or '?' not in text:
+            if random.random() < SKIP_SHORT_PROB:
+                return {"ok": True}
 
-    for chunk in split_message(resp):
-        await send_message(chat_id, chunk)
+        thread_key = str(chat_id) if is_group else str(user_id)
+        prompt = await append_link_snippets(text)
+        try:
+            resp = await engine.ask(thread_key, prompt, is_group=is_group)
+        except httpx.TimeoutException:
+            logger.error("OpenAI request timed out", exc_info=True)
+            await send_message(chat_id, "Request timed out. Please try again later.")
+            return {"ok": True}
+
+        for chunk in split_message(resp):
+            await send_message(chat_id, chunk)
 
     return {"ok": True}

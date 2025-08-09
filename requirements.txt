@@ -15,3 +15,4 @@ odfpy>=1.4.0
 tiktoken>=0.7.0
 fastapi>=0.110.0
 uvicorn>=0.23.0
+sentry-sdk>=1.32.0
