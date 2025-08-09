@@ -19,6 +19,14 @@ from utils.bot_handlers import (
     SKIP_SHORT_PROB,
 )
 
+HELP_CMD = "/help"
+HELP_TEXT = (
+    f"{SEARCH_CMD} <query> - semantic search documents\n"
+    f"{INDEX_CMD} - index documents\n"
+    f"{DEEPSEEK_CMD} <query> - ask DeepSeek\n"
+    f"{HELP_CMD} - show this help message"
+)
+
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -125,6 +133,10 @@ async def telegram_webhook(request: Request) -> dict:
             async def send(part: str) -> None:
                 await send_message(chat_id, part)
             await dispatch_response(send, resp)
+        return {"ok": True}
+
+    if text.strip().lower() == HELP_CMD:
+        await send_message(chat_id, HELP_TEXT)
         return {"ok": True}
 
     mentioned = False
