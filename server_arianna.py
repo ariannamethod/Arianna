@@ -38,11 +38,6 @@ if not OPENAI_API_KEY:
     logger.error("OPENAI_API_KEY environment variable is not set")
     raise SystemExit("Missing OPENAI_API_KEY. Set the environment variable and restart the application.")
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-if not DEEPSEEK_API_KEY:
-    logger.error("DEEPSEEK_API_KEY environment variable is not set")
-    raise SystemExit("Missing DEEPSEEK_API_KEY. Set the environment variable and restart the application.")
-
 api_id_str = os.getenv("TELEGRAM_API_ID")
 if not api_id_str:
     logger.error("TELEGRAM_API_ID environment variable is not set")

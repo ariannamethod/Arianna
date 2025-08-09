@@ -26,8 +26,6 @@ class AriannaEngine:
         if not self.openai_key:
             raise SystemExit("OPENAI_API_KEY environment variable is not set. Exiting.")
         self.deepseek_key = os.getenv("DEEPSEEK_API_KEY")
-        if not self.deepseek_key:
-            raise SystemExit("DEEPSEEK_API_KEY environment variable is not set. Exiting.")
         self.headers    = {
             "Authorization": f"Bearer {self.openai_key}",
             "Content-Type": "application/json",
@@ -241,6 +239,8 @@ class AriannaEngine:
 
     async def deepseek_reply(self, prompt: str) -> str:
         """Отправить сообщение в DeepSeek и вернуть его ответ."""
+        if not self.deepseek_key:
+            return "DeepSeek integration is not configured"
         system_prompt = self._load_system_prompt()
         messages = [
             {"role": "system", "content": system_prompt},

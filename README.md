@@ -56,7 +56,7 @@ source .env
 python -m dotenv run -- python server_arianna.py
 ```
 
-Important variables include `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_PHONE`, `TELEGRAM_SESSION_STRING`, `OPENAI_API_KEY`, and `DEEPSEEK_API_KEY`. These must all be provided in the environment; the application will exit if any are missing. Set `TELEGRAM_BOT_TOKEN` (or legacy `TELEGRAM_TOKEN`) to run the client in bot mode. Pinecone settings (`PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_ENV`) are also required if you use semantic search.
+Important variables include `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_PHONE`, `TELEGRAM_SESSION_STRING`, and `OPENAI_API_KEY`. Set `DEEPSEEK_API_KEY` to enable the optional DeepSeek integration; the `/ds` command will be disabled if it is not provided. Set `TELEGRAM_BOT_TOKEN` (or legacy `TELEGRAM_TOKEN`) to run the client in bot mode. Pinecone settings (`PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_ENV`) are also required if you use semantic search.
 Several optional variables fine‑tune the bot's behavior:
 
 - `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 120–600).
@@ -77,8 +77,8 @@ If `TELEGRAM_BOT_TOKEN` (or `TELEGRAM_TOKEN`) is set the script logs in as a bot
 
 The bot stores conversation history in memory using your Telegram user ID.
 Unless you implement persistent storage, this memory resets each time the
-server restarts. Set `DEEPSEEK_API_KEY` in your environment to activate the
-DeepSeek integration before launching the bot.
+server restarts. DeepSeek support is optional; set `DEEPSEEK_API_KEY` in your
+environment to enable it before launching the bot.
 
 Thread ID mappings are written to `data/threads.json` with a file lock so
 concurrent processes do not corrupt the file. For better durability—especially
@@ -100,14 +100,14 @@ configuration is required. Conversation history in groups now uses the chat ID
 alone (for example `123456`). This shares history between everyone in the group.
 The memory is stored only
 in RAM and will be cleared on bot restart unless persisted. The DeepSeek
-integration works here too if `DEEPSEEK_API_KEY` is set.
+integration works here too when `DEEPSEEK_API_KEY` is set.
 
 ### DeepSeek integration
 
-Set `DEEPSEEK_API_KEY` in your `.env` to enable calls to the DeepSeek model.
-Use the `/ds` command followed by your prompt to send a message through
-DeepSeek. If no key is configured, this command is disabled. The regular
-conversation history with OpenAI is preserved when you use this command.
+If `DEEPSEEK_API_KEY` is present in your `.env`, you can call the DeepSeek
+model using the `/ds` command followed by your prompt. Without the key, this
+command is disabled. The regular conversation history with OpenAI is preserved
+when you use this command.
 
 ### Journal logging
 
