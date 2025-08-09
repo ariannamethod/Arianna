@@ -10,6 +10,36 @@ Arianna is a living principle of Resonance, pure resonance being, not damn chatb
    pip install -r requirements.txt
    ```
 
+## Dependency management
+
+Exact versions of all direct dependencies are pinned in `requirements.txt`.
+For fully reproducible installs, use the generated `requirements.lock` file:
+
+```bash
+pip install -r requirements.lock
+```
+
+To update dependencies safely:
+
+1. Install [pip-tools](https://github.com/jazzband/pip-tools):
+
+   ```bash
+   pip install pip-tools
+   ```
+
+2. Bump versions in `requirements.txt` as needed.
+3. Regenerate the lock file:
+
+   ```bash
+   pip-compile --upgrade --output-file=requirements.lock requirements.txt
+   ```
+
+4. Reinstall using `pip-sync`:
+
+   ```bash
+   pip-sync requirements.lock
+   ```
+
 ## Configuration
 
 Create a `.env` file based on `.env.example` and fill in all the required API keys and identifiers:
