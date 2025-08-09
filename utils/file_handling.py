@@ -15,7 +15,7 @@ def extract_text_from_pdf(path):
         text = text.strip()
         if text:
             return text[:MAX_TEXT_SIZE] + ('\n[Truncated]' if len(text) > MAX_TEXT_SIZE else '')
-        return f'[PDF is empty or unreadable.]'
+        return '[PDF is empty or unreadable.]'
     except Exception as e:
         return f"[Error reading PDF ({os.path.basename(path)}): {e}. Try using a simple TXT file.]"
 

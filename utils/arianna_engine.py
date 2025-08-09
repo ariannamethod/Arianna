@@ -37,6 +37,16 @@ class AriannaEngine:
         self.request_timeout = 30
         self.assistant_id = None
         self.threads      = load_threads()  # user_id → thread_id
+        self.client       = httpx.AsyncClient(headers=self.headers, timeout=self.request_timeout)
+
+    async def aclose(self) -> None:
+        await self.client.aclose()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        await self.aclose()
 
     async def setup_assistant(self):
         """Load existing assistant or create a new one and store its ID."""
@@ -70,24 +80,21 @@ class AriannaEngine:
             "tool_resources": {},
         }
 
-        async with httpx.AsyncClient() as client:
-            try:
-                r = await client.post(
-                    "https://api.openai.com/v1/assistants",
-                    headers=self.headers,
-                    json=payload,
-                    timeout=self.request_timeout,
-                )
-                r.raise_for_status()
-            except httpx.TimeoutException:
-                self.logger.error("OpenAI request timed out during assistant setup")
-                return "OpenAI request timed out. Please try again later."
-            except Exception as e:
-                self.logger.error("Failed to create Arianna Assistant", exc_info=e)
-                return f"Failed to create Arianna Assistant: {e}"
+        try:
+            r = await self.client.post(
+                "https://api.openai.com/v1/assistants",
+                json=payload,
+            )
+            r.raise_for_status()
+        except httpx.TimeoutException:
+            self.logger.error("OpenAI request timed out during assistant setup")
+            return "OpenAI request timed out. Please try again later."
+        except Exception as e:
+            self.logger.error("Failed to create Arianna Assistant", exc_info=e)
+            return f"Failed to create Arianna Assistant: {e}"
 
-            self.assistant_id = r.json()["id"]
-            self.logger.info(f"✅ Arianna Assistant created: {self.assistant_id}")
+        self.assistant_id = r.json()["id"]
+        self.logger.info(f"✅ Arianna Assistant created: {self.assistant_id}")
 
         try:
             os.makedirs(os.path.dirname(ASSISTANT_ID_PATH), exist_ok=True)
@@ -110,19 +117,16 @@ class AriannaEngine:
     async def _get_thread(self, key: str) -> str:
         """Get or create a thread for the given key."""
         if key not in self.threads:
-            async with httpx.AsyncClient() as client:
-                try:
-                    r = await client.post(
-                        "https://api.openai.com/v1/threads",
-                        headers=self.headers,
-                        json={"metadata": {"thread_key": key}},
-                        timeout=self.request_timeout,
-                    )
-                    r.raise_for_status()
-                    self.threads[key] = r.json()["id"]
-                except httpx.TimeoutException:
-                    self.logger.error("OpenAI request timed out when creating thread")
-                    raise
+            try:
+                r = await self.client.post(
+                    "https://api.openai.com/v1/threads",
+                    json={"metadata": {"thread_key": key}},
+                )
+                r.raise_for_status()
+                self.threads[key] = r.json()["id"]
+            except httpx.TimeoutException:
+                self.logger.error("OpenAI request timed out when creating thread")
+                raise
             save_threads(self.threads)
         return self.threads[key]
 
@@ -134,119 +138,106 @@ class AriannaEngine:
         tid = await self._get_thread(thread_key)
 
         # Добавляем пользовательский запрос
-        async with httpx.AsyncClient() as client:
+        try:
+            msg = await self.client.post(
+                f"https://api.openai.com/v1/threads/{tid}/messages",
+                json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}},
+            )
+            msg.raise_for_status()
+        except httpx.TimeoutException:
+            self.logger.error("OpenAI request timed out when posting message")
+            raise
+        except Exception as e:
+            self.logger.error("Failed to post user message", exc_info=e)
+            # Try to recreate the thread in case the ID became invalid
+            self.threads.pop(thread_key, None)
+            tid = await self._get_thread(thread_key)
             try:
-                msg = await client.post(
+                msg = await self.client.post(
                     f"https://api.openai.com/v1/threads/{tid}/messages",
-                    headers=self.headers,
                     json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}},
-                    timeout=self.request_timeout,
                 )
                 msg.raise_for_status()
             except httpx.TimeoutException:
-                self.logger.error("OpenAI request timed out when posting message")
+                self.logger.error("OpenAI request timed out after recreating thread")
                 raise
-            except Exception as e:
-                self.logger.error("Failed to post user message", exc_info=e)
-                # Try to recreate the thread in case the ID became invalid
-                self.threads.pop(thread_key, None)
-                tid = await self._get_thread(thread_key)
-                try:
-                    msg = await client.post(
-                        f"https://api.openai.com/v1/threads/{tid}/messages",
-                        headers=self.headers,
-                        json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}},
-                        timeout=self.request_timeout,
-                    )
-                    msg.raise_for_status()
-                except httpx.TimeoutException:
-                    self.logger.error("OpenAI request timed out after recreating thread")
-                    raise
-                except Exception as e2:
-                    self.logger.error("Failed to post user message after recreating thread", exc_info=e2)
-                    raise
-
-            # Запускаем ассистента
-            try:
-                run = await client.post(
-                    f"https://api.openai.com/v1/threads/{tid}/runs",
-                    headers=self.headers,
-                    json={"assistant_id": self.assistant_id},
-                    timeout=self.request_timeout,
-                )
-                run.raise_for_status()
-            except httpx.TimeoutException:
-                self.logger.error("OpenAI request timed out when starting run")
+            except Exception as e2:
+                self.logger.error("Failed to post user message after recreating thread", exc_info=e2)
                 raise
-            run_id = run.json()["id"]
 
-            # Polling
-            start_time = time.monotonic()
-            while True:
-                if time.monotonic() - start_time > 60:
-                    self.logger.error("Polling timeout for run %s", run_id)
-                    raise TimeoutError("AriannaEngine.ask() polling timed out")
-                await asyncio.sleep(0.5)
-                try:
-                    st = await client.get(
-                        f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}",
-                        headers=self.headers,
-                        timeout=self.request_timeout,
-                    )
-                except httpx.TimeoutException:
-                    self.logger.error("OpenAI request timed out while polling run status")
-                    raise
-                run_json = st.json()
-                status = run_json["status"]
-                if status == "requires_action":
-                    tool_calls = run_json.get("required_action", {}) \
-                        .get("submit_tool_outputs", {}) \
-                        .get("tool_calls", [])
-                    if tool_calls:
-                        output = await handle_genesis_call(tool_calls)
-                        try:
-                            await client.post(
-                                f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}/submit_tool_outputs",
-                                headers=self.headers,
-                                json={"tool_outputs": [{
-                                    "tool_call_id": tool_calls[0]["id"],
-                                    "output": output
-                                }]},
-                                timeout=self.request_timeout,
-                            )
-                        except httpx.TimeoutException:
-                            self.logger.error("Timeout submitting tool outputs")
-                            raise
-                    continue
-                if status == "completed":
-                    break
-                if status in {"failed", "cancelled"}:
-                    self.logger.error("Run %s ended with status %s", run_id, status)
-                    raise RuntimeError(f"Run {run_id} {status}")
+        # Запускаем ассистента
+        try:
+            run = await self.client.post(
+                f"https://api.openai.com/v1/threads/{tid}/runs",
+                json={"assistant_id": self.assistant_id},
+            )
+            run.raise_for_status()
+        except httpx.TimeoutException:
+            self.logger.error("OpenAI request timed out when starting run")
+            raise
+        run_id = run.json()["id"]
 
-            # Получаем все tool_calls (если есть) и обычный контент
+        # Polling
+        start_time = time.monotonic()
+        while True:
+            if time.monotonic() - start_time > 60:
+                self.logger.error("Polling timeout for run %s", run_id)
+                raise TimeoutError("AriannaEngine.ask() polling timed out")
+            await asyncio.sleep(0.5)
             try:
-                final = await client.get(
-                    f"https://api.openai.com/v1/threads/{tid}/messages",
-                    headers=self.headers,
-                    timeout=self.request_timeout,
+                st = await self.client.get(
+                    f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}",
                 )
             except httpx.TimeoutException:
-                self.logger.error("Timeout when retrieving final message")
+                self.logger.error("OpenAI request timed out while polling run status")
                 raise
-            msg = final.json()["data"][0]
-            # Если ассистент вызвал функцию GENESIS:
-            if msg.get("tool_calls"):
-                answer = await handle_genesis_call(msg["tool_calls"])
-            else:
-                answer = msg["content"][0]["text"]["value"]
+            run_json = st.json()
+            status = run_json["status"]
+            if status == "requires_action":
+                tool_calls = run_json.get("required_action", {}) \
+                    .get("submit_tool_outputs", {}) \
+                    .get("tool_calls", [])
+                if tool_calls:
+                    output = await handle_genesis_call(tool_calls)
+                    try:
+                        await self.client.post(
+                            f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}/submit_tool_outputs",
+                            json={"tool_outputs": [{
+                                "tool_call_id": tool_calls[0]["id"],
+                                "output": output
+                            }]},
+                        )
+                    except httpx.TimeoutException:
+                        self.logger.error("Timeout submitting tool outputs")
+                        raise
+                continue
+            if status == "completed":
+                break
+            if status in {"failed", "cancelled"}:
+                self.logger.error("Run %s ended with status %s", run_id, status)
+                raise RuntimeError(f"Run {run_id} {status}")
 
-            log_event({
-                "thread_key": thread_key,
-                "prompt": prompt,
-                "reply": answer,
-            })
-            return answer
+        # Получаем все tool_calls (если есть) и обычный контент
+        try:
+            final = await self.client.get(
+                f"https://api.openai.com/v1/threads/{tid}/messages",
+            )
+        except httpx.TimeoutException:
+            self.logger.error("Timeout when retrieving final message")
+            raise
+        msg = final.json()["data"][0]
+        # Если ассистент вызвал функцию GENESIS:
+        if msg.get("tool_calls"):
+            answer = await handle_genesis_call(msg["tool_calls"])
+        else:
+            answer = msg["content"][0]["text"]["value"]
+
+        log_event({
+            "thread_key": thread_key,
+            "prompt": prompt,
+            "reply": answer,
+        })
+        return answer
 
     async def deepseek_reply(self, prompt: str) -> str:
         """Отправить сообщение в DeepSeek и вернуть его ответ."""

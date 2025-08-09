@@ -72,6 +72,10 @@ async def startup() -> None:
     await engine.setup_assistant()
     logger.info("🚀 Webhook server started")
 
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await engine.aclose()
+
 @app.get("/")
 async def root() -> dict:
     return {"status": "ok"}

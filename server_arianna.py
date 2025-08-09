@@ -278,9 +278,13 @@ async def main():
         await engine.setup_assistant()
     except Exception:
         logger.exception("Assistant initialization failed")
+        await engine.aclose()
         return
     logger.info("🚀 Arianna client started")
-    await client.run_until_disconnected()
+    try:
+        await client.run_until_disconnected()
+    finally:
+        await engine.aclose()
 
 if __name__ == "__main__":
     asyncio.run(main())
