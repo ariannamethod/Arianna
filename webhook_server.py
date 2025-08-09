@@ -1,6 +1,5 @@
 import os
 import re
-import asyncio
 import logging
 import random
 
@@ -8,10 +7,17 @@ import httpx
 from fastapi import FastAPI, Request
 
 from utils.arianna_engine import AriannaEngine
-from utils.split_message import split_message
 from utils.vector_store import semantic_search, vectorize_all_files
-from utils.text_helpers import extract_text_from_url
 from utils.deepseek_search import DEEPSEEK_ENABLED
+from utils.bot_handlers import (
+    append_link_snippets,
+    parse_command,
+    dispatch_response,
+    DEEPSEEK_CMD,
+    SEARCH_CMD,
+    INDEX_CMD,
+    SKIP_SHORT_PROB,
+)
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -38,31 +44,8 @@ if not DEEPSEEK_API_KEY:
 app = FastAPI()
 engine = AriannaEngine()
 
-DEEPSEEK_CMD = "/ds"
-SEARCH_CMD = "/search"
-INDEX_CMD = "/index"
-
-SKIP_SHORT_PROB = float(os.getenv("SKIP_SHORT_PROB", 0.5))
-URL_REGEX = re.compile(r"https://\S+")
-URL_FETCH_TIMEOUT = int(os.getenv("URL_FETCH_TIMEOUT", 10))
-
 BOT_USERNAME = ""
 BOT_ID = 0
-
-async def append_link_snippets(text: str) -> str:
-    urls = URL_REGEX.findall(text)
-    if not urls:
-        return text
-    tasks = [asyncio.wait_for(extract_text_from_url(url), URL_FETCH_TIMEOUT) for url in urls]
-    snippets = await asyncio.gather(*tasks, return_exceptions=True)
-    parts = [text]
-    for url, snippet in zip(urls, snippets):
-        if isinstance(snippet, Exception):
-            snippet_text = f"[Error loading page: {snippet}]"
-        else:
-            snippet_text = snippet
-        parts.append(f"\n[Snippet from {url}]\n{snippet_text[:500]}")
-    return "\n".join(parts)
 
 async def send_message(chat_id: int, text: str) -> None:
     async with httpx.AsyncClient() as client:
@@ -108,19 +91,20 @@ async def telegram_webhook(request: Request) -> dict:
     if not text:
         return {"ok": True}
 
-    if text.strip().lower().startswith(SEARCH_CMD):
-        query = text.strip()[len(SEARCH_CMD):].lstrip()
-        if query:
-            chunks = await semantic_search(query, engine.openai_key)
+    cmd, arg = parse_command(text)
+    if cmd == SEARCH_CMD:
+        if arg:
+            chunks = await semantic_search(arg, engine.openai_key)
             if not chunks:
                 await send_message(chat_id, "No relevant documents found.")
             else:
+                async def send(part: str) -> None:
+                    await send_message(chat_id, part)
                 for ch in chunks:
-                    for part in split_message(ch):
-                        await send_message(chat_id, part)
+                    await dispatch_response(send, ch)
         return {"ok": True}
 
-    if text.strip().lower().startswith(INDEX_CMD):
+    if cmd == INDEX_CMD:
         await send_message(chat_id, "Indexing documents, please wait...")
         async def sender(msg: str) -> None:
             await send_message(chat_id, msg)
@@ -128,15 +112,15 @@ async def telegram_webhook(request: Request) -> dict:
         await send_message(chat_id, "Indexing complete.")
         return {"ok": True}
 
-    if text.strip().lower().startswith(DEEPSEEK_CMD):
+    if cmd == DEEPSEEK_CMD:
         if not DEEPSEEK_ENABLED:
             await send_message(chat_id, "DeepSeek integration is not configured")
             return {"ok": True}
-        query = text.strip()[len(DEEPSEEK_CMD):].lstrip()
-        if query:
-            resp = await engine.deepseek_reply(query)
-            for part in split_message(resp):
+        if arg:
+            resp = await engine.deepseek_reply(arg)
+            async def send(part: str) -> None:
                 await send_message(chat_id, part)
+            await dispatch_response(send, resp)
         return {"ok": True}
 
     mentioned = False
@@ -173,7 +157,8 @@ async def telegram_webhook(request: Request) -> dict:
         await send_message(chat_id, "Request timed out. Please try again later.")
         return {"ok": True}
 
-    for chunk in split_message(resp):
-        await send_message(chat_id, chunk)
+    async def send(part: str) -> None:
+        await send_message(chat_id, part)
+    await dispatch_response(send, resp)
 
     return {"ok": True}
