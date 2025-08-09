@@ -88,10 +88,10 @@ class AriannaEngine:
             r.raise_for_status()
         except httpx.TimeoutException:
             self.logger.error("OpenAI request timed out during assistant setup")
-            return "OpenAI request timed out. Please try again later."
+            raise RuntimeError("OpenAI request timed out. Please try again later.")
         except Exception as e:
             self.logger.error("Failed to create Arianna Assistant", exc_info=e)
-            return f"Failed to create Arianna Assistant: {e}"
+            raise RuntimeError(f"Failed to create Arianna Assistant: {e}")
 
         self.assistant_id = r.json()["id"]
         self.logger.info(f"✅ Arianna Assistant created: {self.assistant_id}")
