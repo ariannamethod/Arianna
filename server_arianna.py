@@ -14,10 +14,17 @@ from telethon.tl.types import MessageEntityMention
 from telethon.sessions import StringSession
 
 from utils.arianna_engine import AriannaEngine
-from utils.split_message import split_message
 from utils.vector_store import semantic_search, vectorize_all_files
-from utils.text_helpers import extract_text_from_url
 from utils.deepseek_search import DEEPSEEK_ENABLED
+from utils.bot_handlers import (
+    append_link_snippets,
+    parse_command,
+    dispatch_response,
+    DEEPSEEK_CMD,
+    SEARCH_CMD,
+    INDEX_CMD,
+    SKIP_SHORT_PROB,
+)
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -65,9 +72,6 @@ def create_telegram_client(
 client = create_telegram_client(phone=PHONE, bot_token=BOT_TOKEN, session_string=SESSION_STRING)
 engine = AriannaEngine()
 openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
-DEEPSEEK_CMD = "/ds"
-SEARCH_CMD = "/search"
-INDEX_CMD = "/index"
 VOICE_ON_CMD = "/voiceon"
 VOICE_OFF_CMD = "/voiceoff"
 VOICE_ENABLED = {}
@@ -77,33 +81,12 @@ GROUP_DELAY_MIN   = int(os.getenv("GROUP_DELAY_MIN", 120))   # 2 minutes
 GROUP_DELAY_MAX   = int(os.getenv("GROUP_DELAY_MAX", 600))   # 10 minutes
 PRIVATE_DELAY_MIN = int(os.getenv("PRIVATE_DELAY_MIN", 30))  # 30 seconds
 PRIVATE_DELAY_MAX = int(os.getenv("PRIVATE_DELAY_MAX", 180)) # 3 minutes
-SKIP_SHORT_PROB   = float(os.getenv("SKIP_SHORT_PROB", 0.5))
 FOLLOWUP_PROB     = float(os.getenv("FOLLOWUP_PROB", 0.2))
 FOLLOWUP_DELAY_MIN = int(os.getenv("FOLLOWUP_DELAY_MIN", 900))   # 15 minutes
 FOLLOWUP_DELAY_MAX = int(os.getenv("FOLLOWUP_DELAY_MAX", 7200))  # 2 hours
 
-# Regex for detecting links
-URL_REGEX = re.compile(r"https://\S+")
-URL_FETCH_TIMEOUT = int(os.getenv("URL_FETCH_TIMEOUT", 10))
-
 BOT_USERNAME = ""
 BOT_ID = 0
-
-async def append_link_snippets(text: str) -> str:
-    """Append snippet from any https:// link in the text."""
-    urls = URL_REGEX.findall(text)
-    if not urls:
-        return text
-    tasks = [asyncio.wait_for(extract_text_from_url(url), URL_FETCH_TIMEOUT) for url in urls]
-    snippets = await asyncio.gather(*tasks, return_exceptions=True)
-    parts = [text]
-    for url, snippet in zip(urls, snippets):
-        if isinstance(snippet, Exception):
-            snippet_text = f"[Error loading page: {snippet}]"
-        else:
-            snippet_text = snippet
-        parts.append(f"\n[Snippet from {url}]\n{snippet_text[:500]}")
-    return "\n".join(parts)
 
 async def transcribe_voice(file_path: str) -> str:
     """Transcribe an audio file using OpenAI Whisper."""
@@ -141,8 +124,9 @@ async def send_delayed_response(event, resp: str, is_group: bool, thread_key: st
         await client.send_file(event.chat_id, voice_path, caption=resp[:1024])
         os.remove(voice_path)
     else:
-        for chunk in split_message(resp):
+        async def send(chunk: str) -> None:
             await client.send_message(event.chat_id, chunk)
+        await dispatch_response(send, resp)
     if random.random() < FOLLOWUP_PROB:
         asyncio.create_task(schedule_followup(event.chat_id, thread_key, is_group))
 
@@ -161,8 +145,9 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
         await client.send_file(chat_id, voice_path, caption=resp[:1024])
         os.remove(voice_path)
     else:
-        for chunk in split_message(resp):
+        async def send(chunk: str) -> None:
             await client.send_message(chat_id, chunk)
+        await dispatch_response(send, resp)
 
 @client.on(events.NewMessage(func=lambda e: bool(e.message.voice)))
 async def voice_messages(event):
@@ -192,20 +177,21 @@ async def all_messages(event):
     user_id = str(event.sender_id)
     text = event.raw_text or ""
 
-    if text.strip().lower().startswith(SEARCH_CMD):
-        query = text.strip()[len(SEARCH_CMD):].lstrip()
-        if not query:
+    cmd, arg = parse_command(text)
+    if cmd == SEARCH_CMD:
+        if not arg:
             return
-        chunks = await semantic_search(query, engine.openai_key)
+        chunks = await semantic_search(arg, engine.openai_key)
         if not chunks:
             await event.reply("No relevant documents found.")
         else:
+            async def send(part: str) -> None:
+                await event.reply(part)
             for ch in chunks:
-                for part in split_message(ch):
-                    await event.reply(part)
+                await dispatch_response(send, ch)
         return
 
-    if text.strip().lower().startswith(INDEX_CMD):
+    if cmd == INDEX_CMD:
         await event.reply("Indexing documents, please wait...")
         async def sender(msg):
             await event.reply(msg)
@@ -222,16 +208,16 @@ async def all_messages(event):
         await event.reply("Voice responses disabled")
         return
 
-    if text.strip().lower().startswith(DEEPSEEK_CMD):
+    if cmd == DEEPSEEK_CMD:
         if not DEEPSEEK_ENABLED:
             await event.reply("DeepSeek integration is not configured")
             return
-        query = text.strip()[len(DEEPSEEK_CMD):].lstrip()
-        if not query:
+        if not arg:
             return
-        resp = await engine.deepseek_reply(query)
-        for chunk in split_message(resp):
-            await event.reply(chunk)
+        resp = await engine.deepseek_reply(arg)
+        async def send(part: str) -> None:
+            await event.reply(part)
+        await dispatch_response(send, resp)
         return
 
     is_group = event.is_group
