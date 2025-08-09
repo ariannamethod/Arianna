@@ -114,13 +114,18 @@ earlier conversation.
 
 ## Deployment
 
-A simple [Procfile](./Procfile) is provided for platforms such as Heroku:
+A [Procfile](./Procfile) is provided for platforms such as Heroku. It defines two
+process types:
 
 ```
-web: python server_arianna.py
+web: uvicorn webhook_server:app --host 0.0.0.0 --port ${PORT:-8000}
+worker: python server_arianna.py
 ```
 
-Use it as a reference for deploying the project in environments that understand Procfiles.
+Use the `web` process when configuring Telegram webhooks. Set the
+`TELEGRAM_WEBHOOK_URL` environment variable to the public URL of your server and
+the application will register the webhook on startup. The `worker` process runs
+the long‑polling client if you prefer not to use webhooks.
 
 ## License
 
