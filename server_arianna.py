@@ -97,6 +97,38 @@ FOLLOWUP_DELAY_MAX = int(os.getenv("FOLLOWUP_DELAY_MAX", 7200))  # 2 hours
 BOT_USERNAME = ""
 BOT_ID = 0
 
+
+async def _safe_send(coro, success: str, failure: str) -> None:
+    try:
+        await coro
+        logger.info(success)
+    except Exception:
+        logger.error(failure, exc_info=True)
+
+
+async def safe_send_message(chat_id: int, text: str) -> None:
+    await _safe_send(
+        client.send_message(chat_id, text),
+        f"Message delivered to chat {chat_id}",
+        f"Failed to send message to chat {chat_id}",
+    )
+
+
+async def safe_send_file(chat_id: int, path: str, **kwargs) -> None:
+    await _safe_send(
+        client.send_file(chat_id, path, **kwargs),
+        f"File delivered to chat {chat_id}",
+        f"Failed to send file to chat {chat_id}",
+    )
+
+
+async def safe_reply(event, text: str) -> None:
+    await _safe_send(
+        event.reply(text),
+        f"Reply delivered to chat {event.chat_id}",
+        f"Failed to reply to chat {event.chat_id}",
+    )
+
 async def transcribe_voice(file_path: str) -> str:
     """Transcribe an audio file using OpenAI Whisper."""
     try:
@@ -152,41 +184,45 @@ def _delay(is_group: bool) -> float:
 
 async def send_delayed_response(event, resp: str, is_group: bool, thread_key: str):
     """Send the reply after a randomized delay and schedule optional follow-up."""
-    await asyncio.sleep(_delay(is_group))
+    delay = _delay(is_group)
+    logger.debug("Sleeping for %s seconds before sending response", delay)
+    await asyncio.sleep(delay)
     if VOICE_ENABLED.get(event.chat_id):
         voice_path = await synthesize_voice(resp)
         if os.path.exists(voice_path):
-            await client.send_file(event.chat_id, voice_path, caption=resp[:1024])
+            await safe_send_file(event.chat_id, voice_path, caption=resp[:1024])
             os.remove(voice_path)
         else:
-            await client.send_message(event.chat_id, voice_path)
+            await safe_send_message(event.chat_id, voice_path)
     else:
         async def send(chunk: str) -> None:
-            await client.send_message(event.chat_id, chunk)
+            await safe_send_message(event.chat_id, chunk)
         await dispatch_response(send, resp)
     if random.random() < FOLLOWUP_PROB:
         asyncio.create_task(schedule_followup(event.chat_id, thread_key, is_group))
 
 async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
     """Send a short follow-up message referencing the earlier conversation."""
-    await asyncio.sleep(random.uniform(FOLLOWUP_DELAY_MIN, FOLLOWUP_DELAY_MAX))
+    delay = random.uniform(FOLLOWUP_DELAY_MIN, FOLLOWUP_DELAY_MAX)
+    logger.debug("Sleeping for %s seconds before follow-up", delay)
+    await asyncio.sleep(delay)
     follow_prompt = "Send a short follow-up message referencing our earlier conversation."
     try:
         resp = await engine.ask(thread_key, follow_prompt, is_group=is_group)
     except httpx.TimeoutException:
         logger.error("Follow-up request timed out", exc_info=True)
-        await client.send_message(chat_id, "Request timed out. Please try again later.")
+        await safe_send_message(chat_id, "Request timed out. Please try again later.")
         return
     if VOICE_ENABLED.get(chat_id):
         voice_path = await synthesize_voice(resp)
         if os.path.exists(voice_path):
-            await client.send_file(chat_id, voice_path, caption=resp[:1024])
+            await safe_send_file(chat_id, voice_path, caption=resp[:1024])
             os.remove(voice_path)
         else:
-            await client.send_message(chat_id, voice_path)
+            await safe_send_message(chat_id, voice_path)
     else:
         async def send(chunk: str) -> None:
-            await client.send_message(chat_id, chunk)
+            await safe_send_message(chat_id, chunk)
         await dispatch_response(send, resp)
 
 @client.on(events.NewMessage(func=lambda e: bool(e.message.voice)))
@@ -198,7 +234,7 @@ async def voice_messages(event):
         await event.download_media(tmp.name)
     text = await transcribe_voice(tmp.name)
     if text.startswith("Sorry, I couldn't transcribe"):
-        await event.reply(text)
+        await safe_reply(event, text)
         return
     text = await append_link_snippets(text)
     if len(text.split()) < 4 or '?' not in text:
@@ -208,7 +244,7 @@ async def voice_messages(event):
         resp = await engine.ask(thread_key, text, is_group=is_group)
     except httpx.TimeoutException:
         logger.error("Voice message processing timed out", exc_info=True)
-        await event.reply("Request timed out. Please try again later.")
+        await safe_reply(event, "Request timed out. Please try again later.")
         return
     asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
 
@@ -225,40 +261,40 @@ async def all_messages(event):
             return
         chunks = await semantic_search(arg, engine.openai_key)
         if not chunks:
-            await event.reply("No relevant documents found.")
+            await safe_reply(event, "No relevant documents found.")
         else:
             async def send(part: str) -> None:
-                await event.reply(part)
+                await safe_reply(event, part)
             for ch in chunks:
                 await dispatch_response(send, ch)
         return
 
     if cmd == INDEX_CMD:
-        await event.reply("Indexing documents, please wait...")
+        await safe_reply(event, "Indexing documents, please wait...")
         async def sender(msg):
-            await event.reply(msg)
+            await safe_reply(event, msg)
         await vectorize_all_files(engine.openai_key, force=True, on_message=sender)
-        await event.reply("Indexing complete.")
+        await safe_reply(event, "Indexing complete.")
         return
 
     if text.strip().lower() == VOICE_ON_CMD:
         VOICE_ENABLED[event.chat_id] = True
-        await event.reply("Voice responses enabled")
+        await safe_reply(event, "Voice responses enabled")
         return
     if text.strip().lower() == VOICE_OFF_CMD:
         VOICE_ENABLED[event.chat_id] = False
-        await event.reply("Voice responses disabled")
+        await safe_reply(event, "Voice responses disabled")
         return
 
     if cmd == DEEPSEEK_CMD:
         if not DEEPSEEK_ENABLED:
-            await event.reply("DeepSeek integration is not configured")
+            await safe_reply(event, "DeepSeek integration is not configured")
             return
         if not arg:
             return
         resp = await engine.deepseek_reply(arg)
         async def send(part: str) -> None:
-            await event.reply(part)
+            await safe_reply(event, part)
         await dispatch_response(send, resp)
         return
 
@@ -301,7 +337,7 @@ async def all_messages(event):
         resp = await engine.ask(thread_key, prompt, is_group=is_group)
     except httpx.TimeoutException:
         logger.error("OpenAI request timed out", exc_info=True)
-        await event.reply("Request timed out. Please try again later.")
+        await safe_reply(event, "Request timed out. Please try again later.")
         return
     asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
 

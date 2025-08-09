@@ -49,11 +49,15 @@ BOT_ID = 0
 
 async def send_message(chat_id: int, text: str) -> None:
     async with httpx.AsyncClient() as client:
-        await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": chat_id, "text": text},
-            timeout=30,
-        )
+        try:
+            await client.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={"chat_id": chat_id, "text": text},
+                timeout=30,
+            )
+            logger.info("Message delivered to chat %s", chat_id)
+        except Exception:
+            logger.error("Failed to send message to chat %s", chat_id, exc_info=True)
 
 @app.on_event("startup")
 async def startup() -> None:

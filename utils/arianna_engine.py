@@ -183,6 +183,7 @@ class AriannaEngine:
             if time.monotonic() - start_time > 60:
                 self.logger.error("Polling timeout for run %s", run_id)
                 raise TimeoutError("AriannaEngine.ask() polling timed out")
+            self.logger.debug("Sleeping for %s seconds before polling run status", 0.5)
             await asyncio.sleep(0.5)
             try:
                 st = await self.client.get(

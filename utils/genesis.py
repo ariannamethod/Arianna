@@ -102,6 +102,7 @@ class AriannaGenesis:
                         break
                     to_wait = (event_time - datetime.datetime.now()).total_seconds()
                     if to_wait > 0:
+                        logger.debug("Sleeping for %s seconds before %s", to_wait, func.__name__)
                         await asyncio.sleep(to_wait)
                     if not self._running:
                         break
@@ -135,6 +136,7 @@ class AriannaGenesis:
         now = datetime.datetime.now()
         next_day = (now + datetime.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         to_sleep = max(1, (next_day - now).total_seconds())
+        logger.debug("Sleeping for %s seconds until next day", to_sleep)
         await asyncio.sleep(to_sleep)
 
     def start(self):
@@ -303,6 +305,7 @@ class AriannaGenesis:
             payload = {"chat_id": chat_id, "text": text}
             try:
                 requests.post(url, data=payload, timeout=10)
+                self._log(f"[AriannaGenesis] message delivered to {chat_id}")
             except Exception as e:
                 self._log(f"[AriannaGenesis] send_message error: {e}")
 
