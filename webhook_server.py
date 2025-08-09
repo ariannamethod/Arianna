@@ -53,16 +53,17 @@ BOT_ID = 0
 DISABLE_FORMATTING = os.getenv("TELEGRAM_DISABLE_FORMATTING")
 PARSE_MODE = None if DISABLE_FORMATTING else os.getenv("TELEGRAM_PARSE_MODE", "MarkdownV2")
 
+tg_client = httpx.AsyncClient()
+
 async def send_message(chat_id: int, text: str) -> None:
     payload = {"chat_id": chat_id, "text": text}
     if PARSE_MODE:
         payload["parse_mode"] = PARSE_MODE
-    async with httpx.AsyncClient() as client:
-        await client.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json=payload,
-            timeout=30,
-        )
+    await tg_client.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        json=payload,
+        timeout=30,
+    )
 
 @app.on_event("startup")
 async def startup() -> None:
@@ -89,6 +90,7 @@ async def startup() -> None:
 @app.on_event("shutdown")
 async def shutdown() -> None:
     await engine.aclose()
+    await tg_client.aclose()
 
 @app.get("/")
 async def root() -> dict:
