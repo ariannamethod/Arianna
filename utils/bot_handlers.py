@@ -13,7 +13,9 @@ INDEX_CMD = "/index"
 URL_REGEX = re.compile(r"https://\S+")
 URL_FETCH_TIMEOUT = int(os.getenv("URL_FETCH_TIMEOUT", 10))
 
-SKIP_SHORT_PROB = float(os.getenv("SKIP_SHORT_PROB", 0.5))
+# Chance to ignore very short or non-question messages.
+# Set to 0 to disable random skipping.
+SKIP_SHORT_PROB = max(0.0, min(1.0, float(os.getenv("SKIP_SHORT_PROB", 0.5))))
 
 SendFunc = Callable[[str], Awaitable[None]]
 
