@@ -36,11 +36,6 @@ if not OPENAI_API_KEY:
     logger.error("OPENAI_API_KEY environment variable is not set")
     raise SystemExit("Missing OPENAI_API_KEY")
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-if not DEEPSEEK_API_KEY:
-    logger.error("DEEPSEEK_API_KEY environment variable is not set")
-    raise SystemExit("Missing DEEPSEEK_API_KEY")
-
 app = FastAPI()
 engine = AriannaEngine()
 
