@@ -1,3 +1,4 @@
+# For reproducible installs, use requirements.lock generated via "pip freeze"
 telethon==1.40.0
 openai==1.99.6
 filelock==3.18.0

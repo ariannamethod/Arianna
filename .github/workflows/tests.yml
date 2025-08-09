@@ -18,6 +18,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-asyncio flake8
+      - name: Check lock file
+        run: |
+          pip freeze | sort > requirements.lock.ci
+          diff -u requirements.lock requirements.lock.ci
+          rm requirements.lock.ci
       - name: Lint
         run: flake8 utils tests
       - name: Test
