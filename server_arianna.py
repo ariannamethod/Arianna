@@ -4,6 +4,7 @@ import asyncio
 import random
 import logging
 import tempfile
+import inspect
 from typing import Optional
 
 import openai
@@ -106,6 +107,7 @@ PARSE_MODE = None if DISABLE_FORMATTING else os.getenv("TELEGRAM_PARSE_MODE", "M
 
 async def transcribe_voice(file_path: str) -> str:
     """Transcribe an audio file using OpenAI Whisper."""
+    resp = None
     try:
         with open(file_path, "rb") as f:
             resp = await openai_client.audio.transcriptions.create(
@@ -117,6 +119,15 @@ async def transcribe_voice(file_path: str) -> str:
         logger.error("Failed to transcribe voice message", exc_info=True)
         return "Sorry, I couldn't transcribe that audio."
     finally:
+        if resp and hasattr(resp, "close"):
+            close = resp.close
+            try:
+                if inspect.iscoroutinefunction(close):
+                    await close()
+                else:
+                    close()
+            except Exception:
+                logger.warning("Failed to close transcription response", exc_info=True)
         try:
             os.remove(file_path)
         except OSError:
@@ -130,6 +141,7 @@ async def synthesize_voice(text: str) -> str:
     mp3_fd.close()
     ogg_fd.close()
     success = False
+    resp = None
     try:
         resp = await openai_client.audio.speech.with_streaming_response.create(
             model="tts-1",
@@ -144,6 +156,11 @@ async def synthesize_voice(text: str) -> str:
         logger.error("Failed to synthesize voice", exc_info=True)
         return "Sorry, I couldn't synthesize that speech."
     finally:
+        if resp is not None:
+            try:
+                await resp.close()
+            except Exception:
+                logger.warning("Failed to close speech response", exc_info=True)
         try:
             os.remove(mp3_path)
         except OSError:
