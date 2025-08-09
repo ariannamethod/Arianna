@@ -1,4 +1,5 @@
 import os
+import asyncio
 import aiohttp
 
 # You can add multiple keys for rotation if needed. If no key is provided,
@@ -36,20 +37,31 @@ async def call_deepseek(messages):
         "temperature": 0.45,
         "max_tokens": 700
     }
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=payload, headers=headers, timeout=30) as resp:
+    for attempt in range(3):
+        async with aiohttp.ClientSession() as session:
             try:
-                data = await resp.json()
-            except Exception:
-                data = {}
-            if resp.status == 401:
-                rotate_deepseek_key()
-                return None
-            if resp.status != 200:
-                return None
-            if "choices" in data and data["choices"]:
-                reply = data["choices"][0]["message"]["content"].strip()
-                if not reply:
+                async with session.post(url, json=payload, headers=headers, timeout=30) as resp:
+                    try:
+                        data = await resp.json()
+                    except Exception:
+                        data = {}
+                    if resp.status == 401:
+                        rotate_deepseek_key()
+                        return None
+                    if resp.status >= 500 and attempt < 2:
+                        await asyncio.sleep(2)
+                        continue
+                    if resp.status != 200:
+                        return None
+                    if "choices" in data and data["choices"]:
+                        reply = data["choices"][0]["message"]["content"].strip()
+                        if not reply:
+                            return None
+                        return reply
                     return None
-                return reply
-            return None
+            except aiohttp.ClientError:
+                if attempt < 2:
+                    await asyncio.sleep(2)
+                    continue
+                return None
+    return None
