@@ -16,7 +16,8 @@ from utils.bot_handlers import (
     DEEPSEEK_CMD,
     SEARCH_CMD,
     INDEX_CMD,
-    SKIP_SHORT_PROB,
+    SHORT_MSG_SKIP_PROB,
+    DEBUG_SKIP_CMD,
 )
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -46,6 +47,8 @@ engine = AriannaEngine()
 
 BOT_USERNAME = ""
 BOT_ID = 0
+SKIP_ENABLED = True
+CURRENT_SKIP_PROB = SHORT_MSG_SKIP_PROB
 
 async def send_message(chat_id: int, text: str) -> None:
     async with httpx.AsyncClient() as client:
@@ -127,6 +130,14 @@ async def telegram_webhook(request: Request) -> dict:
             await dispatch_response(send, resp)
         return {"ok": True}
 
+    if cmd == DEBUG_SKIP_CMD:
+        global SKIP_ENABLED, CURRENT_SKIP_PROB
+        SKIP_ENABLED = not SKIP_ENABLED
+        CURRENT_SKIP_PROB = SHORT_MSG_SKIP_PROB if SKIP_ENABLED else 0.0
+        state = "enabled" if SKIP_ENABLED else "disabled"
+        await send_message(chat_id, f"Short message skipping {state}")
+        return {"ok": True}
+
     mentioned = False
     if not is_group:
         mentioned = True
@@ -150,7 +161,9 @@ async def telegram_webhook(request: Request) -> dict:
         return {"ok": True}
 
     if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
+        if SKIP_ENABLED and random.random() < CURRENT_SKIP_PROB:
+            reason = "short message" if len(text.split()) < 4 else "no question mark"
+            logger.info("Skipping webhook message: %s", reason)
             return {"ok": True}
 
     thread_key = str(chat_id) if is_group else str(message["from"]["id"])

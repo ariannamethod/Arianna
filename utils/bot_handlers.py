@@ -9,11 +9,16 @@ from utils.text_helpers import extract_text_from_url
 DEEPSEEK_CMD = "/ds"
 SEARCH_CMD = "/search"
 INDEX_CMD = "/index"
+DEBUG_SKIP_CMD = "/debugskip"
 
 URL_REGEX = re.compile(r"https://\S+")
 URL_FETCH_TIMEOUT = int(os.getenv("URL_FETCH_TIMEOUT", 10))
 
-SKIP_SHORT_PROB = float(os.getenv("SKIP_SHORT_PROB", 0.5))
+SHORT_MSG_SKIP_PROB = float(
+    os.getenv("SHORT_MSG_SKIP_PROB", os.getenv("SKIP_SHORT_PROB", 0.5))
+)
+# backward compatibility
+SKIP_SHORT_PROB = SHORT_MSG_SKIP_PROB
 
 SendFunc = Callable[[str], Awaitable[None]]
 
@@ -38,7 +43,7 @@ def parse_command(text: str) -> tuple[Optional[str], str]:
     """Return (command, argument) if text starts with a known command."""
     stripped = text.strip()
     lowered = stripped.lower()
-    for cmd in (SEARCH_CMD, INDEX_CMD, DEEPSEEK_CMD):
+    for cmd in (SEARCH_CMD, INDEX_CMD, DEEPSEEK_CMD, DEBUG_SKIP_CMD):
         if lowered.startswith(cmd):
             arg = stripped[len(cmd):].lstrip()
             return cmd, arg

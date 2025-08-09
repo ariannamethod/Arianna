@@ -61,9 +61,11 @@ Several optional variables fine‑tune the bot's behavior:
 
 - `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 120–600).
 - `PRIVATE_DELAY_MIN`/`PRIVATE_DELAY_MAX` – range for private chats (default 30–180).
-- `SKIP_SHORT_PROB` – chance to ignore very short or non‑question messages (default 0.5).
+- `SHORT_MSG_SKIP_PROB` – chance to ignore very short or non‑question messages (default 0.5).
 - `FOLLOWUP_PROB` – probability of sending a follow‑up later (default 0.2).
 - `FOLLOWUP_DELAY_MIN`/`FOLLOWUP_DELAY_MAX` – delay range for follow‑ups in seconds (default 900–7200).
+
+Use the `/debugskip` command in chat to toggle skipping behavior at runtime.
 
 ## Running the bot
 

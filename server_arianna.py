@@ -23,7 +23,8 @@ from utils.bot_handlers import (
     DEEPSEEK_CMD,
     SEARCH_CMD,
     INDEX_CMD,
-    SKIP_SHORT_PROB,
+    SHORT_MSG_SKIP_PROB,
+    DEBUG_SKIP_CMD,
 )
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -84,6 +85,8 @@ openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 VOICE_ON_CMD = "/voiceon"
 VOICE_OFF_CMD = "/voiceoff"
 VOICE_ENABLED = {}
+SKIP_ENABLED = True
+CURRENT_SKIP_PROB = SHORT_MSG_SKIP_PROB
 
 # --- optional behavior tuning ---
 GROUP_DELAY_MIN   = int(os.getenv("GROUP_DELAY_MIN", 120))   # 2 minutes
@@ -202,7 +205,9 @@ async def voice_messages(event):
         return
     text = await append_link_snippets(text)
     if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
+        if SKIP_ENABLED and random.random() < CURRENT_SKIP_PROB:
+            reason = "short message" if len(text.split()) < 4 else "no question mark"
+            logger.info("Skipping voice message: %s", reason)
             return
     try:
         resp = await engine.ask(thread_key, text, is_group=is_group)
@@ -239,6 +244,14 @@ async def all_messages(event):
             await event.reply(msg)
         await vectorize_all_files(engine.openai_key, force=True, on_message=sender)
         await event.reply("Indexing complete.")
+        return
+
+    if cmd == DEBUG_SKIP_CMD:
+        global SKIP_ENABLED, CURRENT_SKIP_PROB
+        SKIP_ENABLED = not SKIP_ENABLED
+        CURRENT_SKIP_PROB = SHORT_MSG_SKIP_PROB if SKIP_ENABLED else 0.0
+        state = "enabled" if SKIP_ENABLED else "disabled"
+        await event.reply(f"Short message skipping {state}")
         return
 
     if text.strip().lower() == VOICE_ON_CMD:
@@ -292,7 +305,9 @@ async def all_messages(event):
         return
 
     if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
+        if SKIP_ENABLED and random.random() < CURRENT_SKIP_PROB:
+            reason = "short message" if len(text.split()) < 4 else "no question mark"
+            logger.info("Skipping text message: %s", reason)
             return
 
     thread_key = user_id if not is_group else str(event.chat_id)
