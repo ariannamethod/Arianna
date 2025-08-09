@@ -12,7 +12,7 @@ CREATOR_CHAT_ID = os.environ.get("CREATOR_CHAT_ID", "YOUR_TELEGRAM_USER_ID")
 PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY")
 PINECONE_INDEX = os.environ.get("PINECONE_INDEX")
 CHRONICLE_PATH = os.environ.get("CHRONICLE_PATH", "./config/chronicle.log")
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_TOKEN")
 
 logger = logging.getLogger(__name__)
 
@@ -294,12 +294,12 @@ class AriannaGenesis:
             pass
 
     def _async_send(self, chat_id, text):
-        if not TELEGRAM_TOKEN:
-            self._log("[AriannaGenesis] TELEGRAM_TOKEN is not set, cannot send message")
+        if not BOT_TOKEN:
+            self._log("[AriannaGenesis] TELEGRAM_BOT_TOKEN/TELEGRAM_TOKEN is not set, cannot send message")
             return
 
         def _send():
-            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
             payload = {"chat_id": chat_id, "text": text}
             try:
                 requests.post(url, data=payload, timeout=10)
