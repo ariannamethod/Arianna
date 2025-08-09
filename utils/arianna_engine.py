@@ -7,7 +7,7 @@ import time
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 from utils.deepseek_search import call_deepseek
 from utils.journal import log_event
-from utils.thread_store import load_threads, save_threads
+from utils.thread_store_sqlite import load_thread, save_thread
 
 
 ASSISTANT_ID_PATH = "data/assistant_id.json"
@@ -36,7 +36,6 @@ class AriannaEngine:
         # Timeout (in seconds) for all HTTP requests
         self.request_timeout = 30
         self.assistant_id = None
-        self.threads      = load_threads()  # user_id → thread_id
         self.client       = httpx.AsyncClient(headers=self.headers, timeout=self.request_timeout)
 
     async def aclose(self) -> None:
@@ -114,21 +113,27 @@ class AriannaEngine:
             is_group=is_group
         )
 
+    async def _create_thread(self, key: str) -> str:
+        """Always create a new thread for the given key and persist it."""
+        try:
+            r = await self.client.post(
+                "https://api.openai.com/v1/threads",
+                json={"metadata": {"thread_key": key}},
+            )
+            r.raise_for_status()
+            tid = r.json()["id"]
+            save_thread(key, tid)
+            return tid
+        except httpx.TimeoutException:
+            self.logger.error("OpenAI request timed out when creating thread")
+            raise
+
     async def _get_thread(self, key: str) -> str:
         """Get or create a thread for the given key."""
-        if key not in self.threads:
-            try:
-                r = await self.client.post(
-                    "https://api.openai.com/v1/threads",
-                    json={"metadata": {"thread_key": key}},
-                )
-                r.raise_for_status()
-                self.threads[key] = r.json()["id"]
-            except httpx.TimeoutException:
-                self.logger.error("OpenAI request timed out when creating thread")
-                raise
-            save_threads(self.threads)
-        return self.threads[key]
+        tid = load_thread(key)
+        if tid:
+            return tid
+        return await self._create_thread(key)
 
     async def ask(self, thread_key: str, prompt: str, is_group: bool=False) -> str:
         """
@@ -150,8 +155,7 @@ class AriannaEngine:
         except Exception as e:
             self.logger.error("Failed to post user message", exc_info=e)
             # Try to recreate the thread in case the ID became invalid
-            self.threads.pop(thread_key, None)
-            tid = await self._get_thread(thread_key)
+            tid = await self._create_thread(thread_key)
             try:
                 msg = await self.client.post(
                     f"https://api.openai.com/v1/threads/{tid}/messages",
