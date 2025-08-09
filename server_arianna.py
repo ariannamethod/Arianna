@@ -8,10 +8,10 @@ from typing import Optional
 
 import openai
 import httpx
-from typing import Optional
 from pydub import AudioSegment
 from telethon import TelegramClient, events
 from telethon.tl.types import MessageEntityMention
+from telethon.sessions import StringSession
 
 from utils.arianna_engine import AriannaEngine
 from utils.split_message import split_message
@@ -40,14 +40,29 @@ API_ID = int(os.getenv("TELEGRAM_API_ID", 20973755))
 API_HASH = os.getenv("TELEGRAM_API_HASH", "51173cd91874b5f7576b2012f08f40f0")
 PHONE = os.getenv("TELEGRAM_PHONE", "+972584038033")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+SESSION_STRING = os.getenv(
+    "TELEGRAM_SESSION_STRING",
+    (
+        "1BJWap1sBuwLNE3K0r3YyH19KqYjpKAgTfUalQz7J_sJbTtN5KiHLMjYVxyA2-qZOivMKx9U_AKQ3H2DGsN1CjCrtgB7PEgWiiwvcxMC7aMx04co"
+        "LG6RgnFl0C2jLL6HtDzZS8VrS-L5auPZ7Rw_gm-Oe532NHMZdh1yA2pyyjd2aVJpFJGWULs0P0mGYwXSb5BNTrP2vpyWTCcZa8Ei9KEP6y_nBDtVz"
+        "FBKwxBDn5_3wEBjg9SKUS48qZnoIdeD5gsQICjFi0x29oNwIYvOIjnBsg72RfCdaukvGu2yFcDop1Z752a2NUrs0DYXvr990zVwxdlLg1RH6Gk-Ke"
+        "MkQDJoN_g8BRrI="
+    ),
+)
 
 
-def create_telegram_client(phone: Optional[str] = None, bot_token: Optional[str] = None) -> TelegramClient:
+def create_telegram_client(
+    phone: Optional[str] = None,
+    bot_token: Optional[str] = None,
+    session_string: Optional[str] = None,
+) -> TelegramClient:
+    if session_string:
+        return TelegramClient(StringSession(session_string), API_ID, API_HASH)
     session_name = "arianna_bot" if bot_token else "arianna"
     return TelegramClient(session_name, API_ID, API_HASH)
 
 
-client = create_telegram_client(phone=PHONE, bot_token=BOT_TOKEN)
+client = create_telegram_client(phone=PHONE, bot_token=BOT_TOKEN, session_string=SESSION_STRING)
 engine = AriannaEngine()
 openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 DEEPSEEK_CMD = "/ds"
@@ -266,6 +281,8 @@ async def main():
     global BOT_USERNAME, BOT_ID
     if BOT_TOKEN:
         await client.start(bot_token=BOT_TOKEN)
+    elif SESSION_STRING:
+        await client.start()
     else:
         await client.start(phone=PHONE)
     me = await client.get_me()
