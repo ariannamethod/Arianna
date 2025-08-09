@@ -25,6 +25,7 @@ from utils.bot_handlers import (
     INDEX_CMD,
     SKIP_SHORT_PROB,
 )
+from utils.tasks import create_task
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -165,7 +166,7 @@ async def send_delayed_response(event, resp: str, is_group: bool, thread_key: st
             await client.send_message(event.chat_id, chunk)
         await dispatch_response(send, resp)
     if random.random() < FOLLOWUP_PROB:
-        asyncio.create_task(schedule_followup(event.chat_id, thread_key, is_group))
+        create_task(schedule_followup(event.chat_id, thread_key, is_group))
 
 async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
     """Send a short follow-up message referencing the earlier conversation."""
@@ -210,7 +211,7 @@ async def voice_messages(event):
         logger.error("Voice message processing timed out", exc_info=True)
         await event.reply("Request timed out. Please try again later.")
         return
-    asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
+    create_task(send_delayed_response(event, resp, is_group, thread_key))
 
 @client.on(events.NewMessage(incoming=True))
 async def all_messages(event):
@@ -303,7 +304,7 @@ async def all_messages(event):
         logger.error("OpenAI request timed out", exc_info=True)
         await event.reply("Request timed out. Please try again later.")
         return
-    asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
+    create_task(send_delayed_response(event, resp, is_group, thread_key))
 
 async def main():
     global BOT_USERNAME, BOT_ID

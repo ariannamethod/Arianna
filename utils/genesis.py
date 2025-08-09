@@ -5,6 +5,7 @@ import datetime
 import requests
 import os
 import logging
+from .tasks import create_task
 
 # === Настройки и переменные из окружения / .env ===
 GROUP_ID = os.environ.get("GROUP_ID", "ARIANNA-CORE")
@@ -141,7 +142,7 @@ class AriannaGenesis:
         if getattr(self, "_task", None) and not self._task.done():
             return self._task
         self._running = True
-        self._task = asyncio.create_task(self.run())
+        self._task = create_task(self.run())
         return self._task
 
     async def stop(self):
