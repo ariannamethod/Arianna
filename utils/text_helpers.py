@@ -2,9 +2,11 @@ import difflib
 import aiohttp
 from bs4 import BeautifulSoup
 
+
 def fuzzy_match(a, b):
     """Return similarity ratio between two strings."""
     return difflib.SequenceMatcher(None, a, b).ratio()
+
 
 async def extract_text_from_url(url):
     """Fetches a web page asynchronously and returns visible text."""
