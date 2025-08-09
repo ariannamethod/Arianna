@@ -52,11 +52,11 @@ def save_threads(threads: dict, db_path: str = THREADS_DB_PATH) -> None:
     try:
         _init_db(db_path)
         with sqlite3.connect(db_path) as conn:
-            conn.execute("DELETE FROM threads")
-            conn.executemany(
-                "INSERT OR REPLACE INTO threads (user_id, thread_id) VALUES (?, ?)",
-                threads.items(),
-            )
+            for user_id, thread_id in threads.items():
+                conn.execute(
+                    "INSERT OR REPLACE INTO threads (user_id, thread_id) VALUES (?, ?)",
+                    (user_id, thread_id),
+                )
             conn.commit()
     except Exception:
         logger.exception("Failed to save threads to %s", db_path)
