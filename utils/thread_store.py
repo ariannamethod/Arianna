@@ -1,34 +1,52 @@
 import os
-import json
+import sqlite3
 import logging
-from filelock import FileLock
+from contextlib import closing
+from typing import Optional
 
-THREADS_PATH = "data/threads.json"
+DB_PATH = "data/threads.db"
 logger = logging.getLogger(__name__)
 
-# TODO: consider migrating to SQLite for better durability before introducing
-# client-id–based multi-user flows.
+
+def _get_connection():
+    """Return a SQLite connection, creating the database and table if needed."""
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    conn = sqlite3.connect(DB_PATH)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS threads (
+            user_id TEXT PRIMARY KEY,
+            thread_id TEXT NOT NULL
+        )
+        """
+    )
+    return conn
 
 
-def load_threads(path: str = THREADS_PATH) -> dict:
-    """Load stored thread mappings from JSON."""
-    lock = FileLock(f"{path}.lock")
+def load_thread(user_id: str) -> Optional[str]:
+    """Load thread_id for a given user_id."""
     try:
-        with lock:
-            if os.path.isfile(path):
-                with open(path, "r", encoding="utf-8") as f:
-                    return json.load(f)
+        with closing(_get_connection()) as conn:
+            cur = conn.execute(
+                "SELECT thread_id FROM threads WHERE user_id = ?",
+                (user_id,),
+            )
+            row = cur.fetchone()
+            return row[0] if row else None
     except Exception:
-        logger.exception("Failed to load threads from %s", path)
-    return {}
+        logger.exception("Failed to load thread for %s", user_id)
+        return None
 
 
-def save_threads(threads: dict, path: str = THREADS_PATH) -> None:
-    """Save thread mappings to JSON."""
-    lock = FileLock(f"{path}.lock")
+def save_thread(user_id: str, thread_id: str) -> None:
+    """Persist thread_id for a given user_id."""
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with lock, open(path, "w", encoding="utf-8") as f:
-            json.dump(threads, f, ensure_ascii=False, indent=2)
+        with closing(_get_connection()) as conn:
+            conn.execute(
+                "REPLACE INTO threads (user_id, thread_id) VALUES (?, ?)",
+                (user_id, thread_id),
+            )
+            conn.commit()
     except Exception:
-        logger.exception("Failed to save threads to %s", path)
+        logger.exception("Failed to save thread %s for %s", thread_id, user_id)
+

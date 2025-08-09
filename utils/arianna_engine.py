@@ -7,7 +7,7 @@ import time
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 from utils.deepseek_search import call_deepseek
 from utils.journal import log_event
-from utils.thread_store import load_threads, save_threads
+from utils.thread_store import load_thread, save_thread
 
 
 ASSISTANT_ID_PATH = "data/assistant_id.json"
@@ -36,7 +36,7 @@ class AriannaEngine:
         # Timeout (in seconds) for all HTTP requests
         self.request_timeout = 30
         self.assistant_id = None
-        self.threads      = load_threads()  # user_id → thread_id
+        self.threads: dict[str, str] = {}  # cache: user_id → thread_id
 
     async def setup_assistant(self):
         """Load existing assistant or create a new one and store its ID."""
@@ -110,20 +110,24 @@ class AriannaEngine:
     async def _get_thread(self, key: str) -> str:
         """Get or create a thread for the given key."""
         if key not in self.threads:
-            async with httpx.AsyncClient() as client:
-                try:
-                    r = await client.post(
-                        "https://api.openai.com/v1/threads",
-                        headers=self.headers,
-                        json={"metadata": {"thread_key": key}},
-                        timeout=self.request_timeout,
-                    )
-                    r.raise_for_status()
-                    self.threads[key] = r.json()["id"]
-                except httpx.TimeoutException:
-                    self.logger.error("OpenAI request timed out when creating thread")
-                    raise
-            save_threads(self.threads)
+            stored = load_thread(key)
+            if stored:
+                self.threads[key] = stored
+            else:
+                async with httpx.AsyncClient() as client:
+                    try:
+                        r = await client.post(
+                            "https://api.openai.com/v1/threads",
+                            headers=self.headers,
+                            json={"metadata": {"thread_key": key}},
+                            timeout=self.request_timeout,
+                        )
+                        r.raise_for_status()
+                        self.threads[key] = r.json()["id"]
+                    except httpx.TimeoutException:
+                        self.logger.error("OpenAI request timed out when creating thread")
+                        raise
+                save_thread(key, self.threads[key])
         return self.threads[key]
 
     async def ask(self, thread_key: str, prompt: str, is_group: bool=False) -> str:
