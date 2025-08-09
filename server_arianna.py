@@ -194,10 +194,12 @@ async def voice_messages(event):
     text = await transcribe_voice(tmp.name)
     if text.startswith("Sorry, I couldn't transcribe"):
         await event.reply(text)
+        logger.info("Skipping voice message: transcription failed")
         return
     text = await append_link_snippets(text)
     if len(text.split()) < 4 or '?' not in text:
         if random.random() < SKIP_SHORT_PROB:
+            logger.info("Skipping voice message: too short or no question")
             return
     try:
         resp = await engine.ask(thread_key, text, is_group=is_group)
@@ -210,6 +212,7 @@ async def voice_messages(event):
 @client.on(events.NewMessage(incoming=True))
 async def all_messages(event):
     if event.out:
+        logger.info("Ignoring outgoing message")
         return
     user_id = str(event.sender_id)
     text = event.raw_text or ""
@@ -217,6 +220,7 @@ async def all_messages(event):
     cmd, arg = parse_command(text)
     if cmd == SEARCH_CMD:
         if not arg:
+            logger.info("Search command missing argument")
             return
         chunks = await semantic_search(arg, engine.openai_key)
         if not chunks:
@@ -250,6 +254,7 @@ async def all_messages(event):
             await event.reply("DeepSeek integration is not configured")
             return
         if not arg:
+            logger.info("DeepSeek command missing argument")
             return
         resp = await engine.deepseek_reply(arg)
         async def send(part: str) -> None:
@@ -284,10 +289,12 @@ async def all_messages(event):
         mentioned = True
 
     if not (mentioned or is_reply):
+        logger.info("Message ignored: bot not mentioned and not a reply")
         return
 
     if len(text.split()) < 4 or '?' not in text:
         if random.random() < SKIP_SHORT_PROB:
+            logger.info("Skipping message: too short or no question")
             return
 
     thread_key = user_id if not is_group else str(event.chat_id)
