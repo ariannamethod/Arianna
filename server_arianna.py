@@ -17,7 +17,6 @@ from utils.arianna_engine import AriannaEngine
 from utils.vector_store import semantic_search, vectorize_all_files
 from utils.deepseek_search import DEEPSEEK_ENABLED
 from utils.bot_handlers import (
-    append_link_snippets,
     parse_command,
     dispatch_response,
     DEEPSEEK_CMD,
@@ -25,6 +24,7 @@ from utils.bot_handlers import (
     INDEX_CMD,
     SKIP_SHORT_PROB,
 )
+from utils.link_snippets import append_link_snippets
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(

@@ -4,6 +4,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from utils import bot_handlers as bh  # noqa: E402
+from utils import link_snippets as ls  # noqa: E402
 
 
 def test_append_link_snippets(monkeypatch):
@@ -12,9 +13,9 @@ def test_append_link_snippets(monkeypatch):
         return "Example content"
 
     async def run_test():
-        monkeypatch.setattr(bh, "extract_text_from_url", fake_extract)
+        monkeypatch.setattr(ls, "extract_text_from_url", fake_extract)
         text = "Check https://example.com"
-        result = await bh.append_link_snippets(text)
+        result = await ls.append_link_snippets(text)
         assert "Example content" in result
         assert text in result
 
