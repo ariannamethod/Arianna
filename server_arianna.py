@@ -15,6 +15,7 @@ from telethon.tl.types import MessageEntityMention
 from telethon.sessions import StringSession
 
 from utils.arianna_engine import AriannaEngine
+from utils.thread_store_sqlite import cleanup_old_threads
 from utils.vector_store import semantic_search, vectorize_all_files
 from utils.deepseek_search import DEEPSEEK_ENABLED
 from utils.bot_handlers import (
@@ -74,6 +75,8 @@ def create_telegram_client(
     return TelegramClient(session_name, API_ID, API_HASH)
 
 
+THREAD_TTL_DAYS = int(os.getenv("THREAD_TTL_DAYS", "30"))
+cleanup_old_threads(THREAD_TTL_DAYS)
 client = create_telegram_client(phone=PHONE, bot_token=BOT_TOKEN, session_string=SESSION_STRING)
 engine = AriannaEngine()
 openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
