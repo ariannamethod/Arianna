@@ -83,7 +83,9 @@ engine = AriannaEngine()
 openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 VOICE_ON_CMD = "/voiceon"
 VOICE_OFF_CMD = "/voiceoff"
+FAST_CMD = "/fast"
 VOICE_ENABLED = {}
+FAST_MODE_ENABLED = os.getenv("FAST_MODE", "").lower() in {"1", "true", "yes"}
 
 # --- optional behavior tuning ---
 GROUP_DELAY_MIN   = int(os.getenv("GROUP_DELAY_MIN", 120))   # 2 minutes
@@ -148,7 +150,13 @@ async def synthesize_voice(text: str) -> str:
                 logger.warning("Could not remove temporary file %s", ogg_path, exc_info=True)
 
 def _delay(is_group: bool) -> float:
-    return random.uniform(GROUP_DELAY_MIN, GROUP_DELAY_MAX) if is_group else random.uniform(PRIVATE_DELAY_MIN, PRIVATE_DELAY_MAX)
+    if FAST_MODE_ENABLED:
+        return 0
+    return (
+        random.uniform(GROUP_DELAY_MIN, GROUP_DELAY_MAX)
+        if is_group
+        else random.uniform(PRIVATE_DELAY_MIN, PRIVATE_DELAY_MAX)
+    )
 
 async def send_delayed_response(event, resp: str, is_group: bool, thread_key: str):
     """Send the reply after a randomized delay and schedule optional follow-up."""
@@ -169,7 +177,9 @@ async def send_delayed_response(event, resp: str, is_group: bool, thread_key: st
 
 async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
     """Send a short follow-up message referencing the earlier conversation."""
-    await asyncio.sleep(random.uniform(FOLLOWUP_DELAY_MIN, FOLLOWUP_DELAY_MAX))
+    await asyncio.sleep(
+        0 if FAST_MODE_ENABLED else random.uniform(FOLLOWUP_DELAY_MIN, FOLLOWUP_DELAY_MAX)
+    )
     follow_prompt = "Send a short follow-up message referencing our earlier conversation."
     try:
         resp = await engine.ask(thread_key, follow_prompt, is_group=is_group)
@@ -191,6 +201,7 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
 
 @client.on(events.NewMessage(func=lambda e: bool(e.message.voice)))
 async def voice_messages(event):
+    await client.send_chat_action(event.chat_id, "typing")
     is_group = event.is_group
     user_id = str(event.sender_id)
     thread_key = f"{event.chat_id}:{event.sender_id}" if is_group else user_id
@@ -201,8 +212,16 @@ async def voice_messages(event):
         await event.reply(text)
         return
     text = await append_link_snippets(text)
-    if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
+    short = len(text.split()) < 4
+    no_question = "?" not in text
+    if short or no_question:
+        if FAST_MODE_ENABLED:
+            logger.debug("Fast mode enabled, not skipping voice message")
+        elif random.random() < SKIP_SHORT_PROB:
+            reason = ", ".join(
+                r for r in ["short text" if short else "", "no question mark" if no_question else ""] if r
+            )
+            logger.info("Skipping voice message: %s", reason)
             return
     try:
         resp = await engine.ask(thread_key, text, is_group=is_group)
@@ -216,6 +235,7 @@ async def voice_messages(event):
 async def all_messages(event):
     if event.out:
         return
+    await client.send_chat_action(event.chat_id, "typing")
     user_id = str(event.sender_id)
     text = event.raw_text or ""
 
@@ -240,14 +260,19 @@ async def all_messages(event):
         await vectorize_all_files(engine.openai_key, force=True, on_message=sender)
         await event.reply("Indexing complete.")
         return
-
-    if text.strip().lower() == VOICE_ON_CMD:
+    lower_text = text.strip().lower()
+    if lower_text == VOICE_ON_CMD:
         VOICE_ENABLED[event.chat_id] = True
         await event.reply("Voice responses enabled")
         return
-    if text.strip().lower() == VOICE_OFF_CMD:
+    if lower_text == VOICE_OFF_CMD:
         VOICE_ENABLED[event.chat_id] = False
         await event.reply("Voice responses disabled")
+        return
+    if lower_text == FAST_CMD:
+        global FAST_MODE_ENABLED
+        FAST_MODE_ENABLED = not FAST_MODE_ENABLED
+        await event.reply(f"Fast mode {'enabled' if FAST_MODE_ENABLED else 'disabled'}")
         return
 
     if cmd == DEEPSEEK_CMD:
@@ -291,8 +316,16 @@ async def all_messages(event):
     if not (mentioned or is_reply):
         return
 
-    if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
+    short = len(text.split()) < 4
+    no_question = "?" not in text
+    if short or no_question:
+        if FAST_MODE_ENABLED:
+            logger.debug("Fast mode enabled, not skipping message")
+        elif random.random() < SKIP_SHORT_PROB:
+            reason = ", ".join(
+                r for r in ["short text" if short else "", "no question mark" if no_question else ""] if r
+            )
+            logger.info("Skipping message: %s", reason)
             return
 
     thread_key = user_id if not is_group else str(event.chat_id)
