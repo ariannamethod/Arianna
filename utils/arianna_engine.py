@@ -7,7 +7,7 @@ import time
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 from utils.deepseek_search import call_deepseek
 from utils.journal import log_event
-from utils.thread_store import load_threads, save_threads
+from utils.thread_store_sqlite import load_threads, save_threads
 
 
 ASSISTANT_ID_PATH = "data/assistant_id.json"
