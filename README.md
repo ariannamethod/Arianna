@@ -81,9 +81,10 @@ server restarts. Set `DEEPSEEK_API_KEY` in your environment to activate the
 DeepSeek integration before launching the bot.
 
 Thread ID mappings are written to `data/threads.json` with a file lock so
-concurrent processes do not corrupt the file. For better durability—especially
-before introducing client-id‑based multi-user flows—consider migrating this
-store to a lightweight database such as SQLite.
+concurrent processes do not corrupt the file. For better durability you can
+switch to SQLite storage: create an empty `data/threads.sqlite` file and
+restart the bot. When this file is present the mapping is stored in a
+`threads` table (`id TEXT PRIMARY KEY, thread_id TEXT`).
 
 ### Group chat behavior
 

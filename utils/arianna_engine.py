@@ -7,11 +7,13 @@ import time
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 from utils.deepseek_search import call_deepseek
 from utils.journal import log_event
-from utils.thread_store import load_threads, save_threads
+from utils import thread_store as thread_store_json
+from utils import thread_store_sqlite
 
 
 ASSISTANT_ID_PATH = "data/assistant_id.json"
 ASSISTANT_ID_ENV = "ARIANNA_ASSISTANT_ID"
+
 
 class AriannaEngine:
     """
@@ -28,16 +30,24 @@ class AriannaEngine:
         self.deepseek_key = os.getenv("DEEPSEEK_API_KEY")
         if not self.deepseek_key:
             raise SystemExit("DEEPSEEK_API_KEY environment variable is not set. Exiting.")
-        self.headers    = {
+        self.headers = {
             "Authorization": f"Bearer {self.openai_key}",
             "Content-Type": "application/json",
-            "OpenAI-Beta": "assistants=v2"
+            "OpenAI-Beta": "assistants=v2",
         }
         # Timeout (in seconds) for all HTTP requests
         self.request_timeout = 30
         self.assistant_id = None
-        self.threads      = load_threads()  # user_id → thread_id
-        self.client       = httpx.AsyncClient(headers=self.headers, timeout=self.request_timeout)
+        if os.path.isfile(thread_store_sqlite.THREADS_DB_PATH):
+            self._load_threads = thread_store_sqlite.load_threads
+            self._save_threads = thread_store_sqlite.save_threads
+        else:
+            self._load_threads = thread_store_json.load_threads
+            self._save_threads = thread_store_json.save_threads
+        self.threads = self._load_threads()  # user_id → thread_id
+        self.client = httpx.AsyncClient(
+            headers=self.headers, timeout=self.request_timeout
+        )
 
     async def aclose(self) -> None:
         await self.client.aclose()
@@ -127,10 +137,10 @@ class AriannaEngine:
             except httpx.TimeoutException:
                 self.logger.error("OpenAI request timed out when creating thread")
                 raise
-            save_threads(self.threads)
+            self._save_threads(self.threads)
         return self.threads[key]
 
-    async def ask(self, thread_key: str, prompt: str, is_group: bool=False) -> str:
+    async def ask(self, thread_key: str, prompt: str, is_group: bool = False) -> str:
         """
         Кладёт prompt в thread, запускает run, ждёт и возвращает ответ.
         Если ассистент запрашивает GENESIS-функцию — обрабатываем через handle_genesis_call().
@@ -250,4 +260,3 @@ class AriannaEngine:
         if reply is None:
             return "DeepSeek did not return a response"
         return reply
-
