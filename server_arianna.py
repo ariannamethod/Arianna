@@ -320,10 +320,10 @@ async def main():
     BOT_ID = me.id
     try:
         await engine.setup_assistant()
-    except Exception:
+    except RuntimeError:
         logger.exception("Assistant initialization failed")
         await engine.aclose()
-        return
+        raise SystemExit(1)
     logger.info("🚀 Arianna client started")
     try:
         await client.run_until_disconnected()

@@ -64,7 +64,12 @@ async def startup() -> None:
                 f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
                 json={"url": webhook_url},
             )
-    await engine.setup_assistant()
+    try:
+        await engine.setup_assistant()
+    except RuntimeError:
+        logger.exception("Assistant initialization failed")
+        await engine.aclose()
+        raise SystemExit(1)
     logger.info("🚀 Webhook server started")
 
 @app.on_event("shutdown")
