@@ -156,6 +156,10 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
         logger.error("Follow-up request timed out", exc_info=True)
         await client.send_message(chat_id, "Request timed out. Please try again later.")
         return
+    except httpx.HTTPStatusError as e:
+        logger.error("Follow-up request failed: %s", e, exc_info=True)
+        await client.send_message(chat_id, "Upstream service error. Please try again later.")
+        return
     if VOICE_ENABLED.get(chat_id):
         voice_path = await synthesize_voice(resp)
         await client.send_file(chat_id, voice_path, caption=resp[:1024])
@@ -182,6 +186,10 @@ async def voice_messages(event):
     except httpx.TimeoutException:
         logger.error("Voice message processing timed out", exc_info=True)
         await event.reply("Request timed out. Please try again later.")
+        return
+    except httpx.HTTPStatusError as e:
+        logger.error("Voice message request failed: %s", e, exc_info=True)
+        await event.reply("Upstream service error. Please try again later.")
         return
     asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
 
@@ -274,6 +282,10 @@ async def all_messages(event):
     except httpx.TimeoutException:
         logger.error("OpenAI request timed out", exc_info=True)
         await event.reply("Request timed out. Please try again later.")
+        return
+    except httpx.HTTPStatusError as e:
+        logger.error("OpenAI request failed: %s", e, exc_info=True)
+        await event.reply("Upstream service error. Please try again later.")
         return
     asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
 

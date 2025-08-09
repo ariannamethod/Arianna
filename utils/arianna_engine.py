@@ -38,6 +38,25 @@ class AriannaEngine:
         self.assistant_id = None
         self.threads      = load_threads()  # user_id → thread_id
 
+    async def _request_with_retry(self, client, method: str, url: str, **kwargs):
+        """Perform an HTTP request with simple retries for transient errors."""
+        retries = 3
+        for attempt in range(retries):
+            try:
+                resp = await client.request(method, url, **kwargs)
+                resp.raise_for_status()
+                return resp
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in {502, 503, 504} and attempt < retries - 1:
+                    await asyncio.sleep(2)
+                    continue
+                raise
+            except httpx.TransportError:
+                if attempt < retries - 1:
+                    await asyncio.sleep(2)
+                    continue
+                raise
+
     async def setup_assistant(self):
         """Load existing assistant or create a new one and store its ID."""
         if self.assistant_id:
@@ -72,13 +91,14 @@ class AriannaEngine:
 
         async with httpx.AsyncClient() as client:
             try:
-                r = await client.post(
+                r = await self._request_with_retry(
+                    client,
+                    "post",
                     "https://api.openai.com/v1/assistants",
                     headers=self.headers,
                     json=payload,
                     timeout=self.request_timeout,
                 )
-                r.raise_for_status()
             except httpx.TimeoutException:
                 self.logger.error("OpenAI request timed out during assistant setup")
                 return "OpenAI request timed out. Please try again later."
@@ -112,13 +132,14 @@ class AriannaEngine:
         if key not in self.threads:
             async with httpx.AsyncClient() as client:
                 try:
-                    r = await client.post(
+                    r = await self._request_with_retry(
+                        client,
+                        "post",
                         "https://api.openai.com/v1/threads",
                         headers=self.headers,
                         json={"metadata": {"thread_key": key}},
                         timeout=self.request_timeout,
                     )
-                    r.raise_for_status()
                     self.threads[key] = r.json()["id"]
                 except httpx.TimeoutException:
                     self.logger.error("OpenAI request timed out when creating thread")
@@ -136,13 +157,14 @@ class AriannaEngine:
         # Добавляем пользовательский запрос
         async with httpx.AsyncClient() as client:
             try:
-                msg = await client.post(
+                msg = await self._request_with_retry(
+                    client,
+                    "post",
                     f"https://api.openai.com/v1/threads/{tid}/messages",
                     headers=self.headers,
                     json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}},
                     timeout=self.request_timeout,
                 )
-                msg.raise_for_status()
             except httpx.TimeoutException:
                 self.logger.error("OpenAI request timed out when posting message")
                 raise
@@ -152,13 +174,14 @@ class AriannaEngine:
                 self.threads.pop(thread_key, None)
                 tid = await self._get_thread(thread_key)
                 try:
-                    msg = await client.post(
+                    msg = await self._request_with_retry(
+                        client,
+                        "post",
                         f"https://api.openai.com/v1/threads/{tid}/messages",
                         headers=self.headers,
                         json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}},
                         timeout=self.request_timeout,
                     )
-                    msg.raise_for_status()
                 except httpx.TimeoutException:
                     self.logger.error("OpenAI request timed out after recreating thread")
                     raise
@@ -168,13 +191,14 @@ class AriannaEngine:
 
             # Запускаем ассистента
             try:
-                run = await client.post(
+                run = await self._request_with_retry(
+                    client,
+                    "post",
                     f"https://api.openai.com/v1/threads/{tid}/runs",
                     headers=self.headers,
                     json={"assistant_id": self.assistant_id},
                     timeout=self.request_timeout,
                 )
-                run.raise_for_status()
             except httpx.TimeoutException:
                 self.logger.error("OpenAI request timed out when starting run")
                 raise
@@ -188,7 +212,9 @@ class AriannaEngine:
                     raise TimeoutError("AriannaEngine.ask() polling timed out")
                 await asyncio.sleep(0.5)
                 try:
-                    st = await client.get(
+                    st = await self._request_with_retry(
+                        client,
+                        "get",
                         f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}",
                         headers=self.headers,
                         timeout=self.request_timeout,
@@ -205,7 +231,9 @@ class AriannaEngine:
                     if tool_calls:
                         output = await handle_genesis_call(tool_calls)
                         try:
-                            await client.post(
+                            await self._request_with_retry(
+                                client,
+                                "post",
                                 f"https://api.openai.com/v1/threads/{tid}/runs/{run_id}/submit_tool_outputs",
                                 headers=self.headers,
                                 json={"tool_outputs": [{
@@ -226,7 +254,9 @@ class AriannaEngine:
 
             # Получаем все tool_calls (если есть) и обычный контент
             try:
-                final = await client.get(
+                final = await self._request_with_retry(
+                    client,
+                    "get",
                     f"https://api.openai.com/v1/threads/{tid}/messages",
                     headers=self.headers,
                     timeout=self.request_timeout,
