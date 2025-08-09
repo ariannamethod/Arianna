@@ -383,6 +383,7 @@ async def main():
         await client.run_until_disconnected()
     finally:
         await engine.aclose()
+        await openai_client.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
