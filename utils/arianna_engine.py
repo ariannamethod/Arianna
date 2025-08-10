@@ -34,8 +34,9 @@ class AriannaEngine:
         # Timeout (in seconds) for all HTTP requests
         self.request_timeout = 30
         self.assistant_id = None
-        self.threads      = load_threads()  # user_id → thread_id
+        self.threads      = load_threads()  # user_id → {thread_id, last_access}
         self.client       = httpx.AsyncClient(headers=self.headers, timeout=self.request_timeout)
+        self._cleanup_task = None
 
     async def aclose(self) -> None:
         await self.client.aclose()
@@ -48,6 +49,8 @@ class AriannaEngine:
 
     async def setup_assistant(self):
         """Load existing assistant or create a new one and store its ID."""
+        # Perform cleanup every time we (re)initialise the assistant
+        self.cleanup_threads()
         if self.assistant_id:
             return self.assistant_id
 
@@ -114,6 +117,7 @@ class AriannaEngine:
 
     async def _get_thread(self, key: str) -> str:
         """Get or create a thread for the given key."""
+        now = int(time.time())
         if key not in self.threads:
             try:
                 r = await self.client.post(
@@ -121,12 +125,42 @@ class AriannaEngine:
                     json={"metadata": {"thread_key": key}},
                 )
                 r.raise_for_status()
-                self.threads[key] = r.json()["id"]
+                self.threads[key] = {
+                    "thread_id": r.json()["id"],
+                    "last_access": now,
+                }
             except httpx.TimeoutException:
                 self.logger.error("OpenAI request timed out when creating thread")
                 raise
+        else:
+            self.threads[key]["last_access"] = now
+        save_threads(self.threads)
+        return self.threads[key]["thread_id"]
+
+    def cleanup_threads(self, max_age_days: int = 30) -> None:
+        """Remove thread mappings that haven't been used recently."""
+        cutoff = int(time.time()) - max_age_days * 86400
+        before = len(self.threads)
+        self.threads = {
+            uid: data
+            for uid, data in self.threads.items()
+            if data.get("last_access", 0) >= cutoff
+        }
+        if len(self.threads) != before:
             save_threads(self.threads)
-        return self.threads[key]
+
+    async def _periodic_cleanup(self, interval_hours: int, max_age_days: int) -> None:
+        while True:
+            self.cleanup_threads(max_age_days)
+            await asyncio.sleep(interval_hours * 3600)
+
+    def start_cleanup_task(self, interval_hours: int = 24, max_age_days: int = 30) -> None:
+        """Start background task for periodic cleanup."""
+        if not self._cleanup_task or self._cleanup_task.done():
+            self.cleanup_threads(max_age_days)
+            self._cleanup_task = asyncio.create_task(
+                self._periodic_cleanup(interval_hours, max_age_days)
+            )
 
     async def ask(self, thread_key: str, prompt: str, is_group: bool=False) -> str:
         """

@@ -84,6 +84,7 @@ async def startup() -> None:
         logger.exception("Assistant initialization failed")
         await engine.aclose()
         raise SystemExit(1)
+    engine.start_cleanup_task()
     logger.info("🚀 Webhook server started")
 
 @app.on_event("shutdown")

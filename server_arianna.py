@@ -375,6 +375,7 @@ async def main():
         logger.exception("Assistant initialization failed")
         await engine.aclose()
         raise SystemExit(1)
+    engine.start_cleanup_task()
     logger.info("🚀 Arianna client started")
     try:
         await client.run_until_disconnected()
