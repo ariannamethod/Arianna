@@ -11,7 +11,11 @@ import openai
 import httpx
 from pydub import AudioSegment
 from telethon import TelegramClient, events, Button
-from telethon.tl.types import MessageEntityMention
+from telethon.tl.types import (
+    MessageEntityMention,
+    BotCommand,
+    BotCommandScopeDefault,
+)
 from telethon.sessions import StringSession
 
 from utils.arianna_engine import AriannaEngine
@@ -428,6 +432,18 @@ async def main():
     else:
         await client.start(phone=PHONE)
     me = await client.get_me()
+    if BOT_TOKEN or getattr(me, "bot", False):
+        await client.set_bot_commands(
+            [
+                BotCommand(SEARCH_CMD.lstrip("/"), "Semantic search documents"),
+                BotCommand(INDEX_CMD.lstrip("/"), "Index documents"),
+                BotCommand(DEEPSEEK_CMD.lstrip("/"), "Ask DeepSeek"),
+                BotCommand(VOICE_ON_CMD.lstrip("/"), "Enable voice responses"),
+                BotCommand(VOICE_OFF_CMD.lstrip("/"), "Disable voice responses"),
+                BotCommand(HELP_CMD.lstrip("/"), "Show help"),
+            ],
+            scope=BotCommandScopeDefault(),
+        )
     BOT_USERNAME = (me.username or "").lower()
     BOT_ID = me.id
     try:
