@@ -34,6 +34,22 @@ def load_threads(db_path: str = THREADS_DB_PATH) -> dict:
             cursor = conn.execute("SELECT user_id, thread_id FROM threads")
             threads = {user_id: thread_id for user_id, thread_id in cursor.fetchall()}
 
+        # Migrate legacy keys of the form "chat_id:sender_id" to just "chat_id"
+        migrated: dict[str, str] = {}
+        changed = False
+        for key, value in threads.items():
+            if ":" in key:
+                new_key = key.split(":", 1)[0]
+                # Keep the first thread_id encountered for a chat_id
+                migrated.setdefault(new_key, value)
+                changed = True
+            else:
+                migrated[key] = value
+
+        if changed:
+            save_threads(migrated, db_path)
+            threads = migrated
+
         if not threads and os.path.isfile(THREADS_JSON_PATH):
             try:
                 with open(THREADS_JSON_PATH, "r", encoding="utf-8") as f:
