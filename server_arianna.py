@@ -10,7 +10,7 @@ from typing import Optional
 import openai
 import httpx
 from pydub import AudioSegment
-from telethon import TelegramClient, events
+from telethon import TelegramClient, events, Button
 from telethon.tl.types import MessageEntityMention
 from telethon.sessions import StringSession
 
@@ -89,6 +89,13 @@ HELP_TEXT = (
     f"{VOICE_OFF_CMD} - disable voice responses\n"
     f"{HELP_CMD} - show this help message"
 )
+
+def default_buttons():
+    """Inline buttons for common actions."""
+    return [
+        [Button.inline("Voice On", b"voice_on"), Button.inline("Voice Off", b"voice_off")],
+        [Button.inline("Search docs", b"search_docs")],
+    ]
 
 # --- optional behavior tuning ---
 GROUP_DELAY_MIN   = int(os.getenv("GROUP_DELAY_MIN", 120))   # 2 minutes
@@ -181,13 +188,29 @@ async def send_delayed_response(event, resp: str, is_group: bool, thread_key: st
     if VOICE_ENABLED.get(event.chat_id):
         voice_path = await synthesize_voice(resp)
         if os.path.exists(voice_path):
-            await client.send_file(event.chat_id, voice_path, caption=resp[:1024], parse_mode=PARSE_MODE)
+            await client.send_file(
+                event.chat_id,
+                voice_path,
+                caption=resp[:1024],
+                parse_mode=PARSE_MODE,
+                buttons=default_buttons(),
+            )
             os.remove(voice_path)
         else:
-            await client.send_message(event.chat_id, voice_path, parse_mode=PARSE_MODE)
+            await client.send_message(
+                event.chat_id,
+                voice_path,
+                parse_mode=PARSE_MODE,
+                buttons=default_buttons(),
+            )
     else:
         async def send(chunk: str) -> None:
-            await client.send_message(event.chat_id, chunk, parse_mode=PARSE_MODE)
+            await client.send_message(
+                event.chat_id,
+                chunk,
+                parse_mode=PARSE_MODE,
+                buttons=default_buttons(),
+            )
         await dispatch_response(send, resp)
     if random.random() < FOLLOWUP_PROB:
         asyncio.create_task(schedule_followup(event.chat_id, thread_key, is_group))
@@ -205,13 +228,29 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
     if VOICE_ENABLED.get(chat_id):
         voice_path = await synthesize_voice(resp)
         if os.path.exists(voice_path):
-            await client.send_file(chat_id, voice_path, caption=resp[:1024], parse_mode=PARSE_MODE)
+            await client.send_file(
+                chat_id,
+                voice_path,
+                caption=resp[:1024],
+                parse_mode=PARSE_MODE,
+                buttons=default_buttons(),
+            )
             os.remove(voice_path)
         else:
-            await client.send_message(chat_id, voice_path, parse_mode=PARSE_MODE)
+            await client.send_message(
+                chat_id,
+                voice_path,
+                parse_mode=PARSE_MODE,
+                buttons=default_buttons(),
+            )
     else:
         async def send(chunk: str) -> None:
-            await client.send_message(chat_id, chunk, parse_mode=PARSE_MODE)
+            await client.send_message(
+                chat_id,
+                chunk,
+                parse_mode=PARSE_MODE,
+                buttons=default_buttons(),
+            )
         await dispatch_response(send, resp)
 
 @client.on(events.NewMessage(func=lambda e: bool(e.message.voice)))
@@ -281,14 +320,14 @@ async def all_messages(event):
 
     if text.strip().lower() == VOICE_ON_CMD:
         VOICE_ENABLED[event.chat_id] = True
-        await event.reply("Voice responses enabled")
+        await event.reply("Voice responses enabled", buttons=default_buttons())
         return
     if text.strip().lower() == VOICE_OFF_CMD:
         VOICE_ENABLED[event.chat_id] = False
-        await event.reply("Voice responses disabled")
+        await event.reply("Voice responses disabled", buttons=default_buttons())
         return
     if text.strip().lower() == HELP_CMD:
-        await event.reply(HELP_TEXT)
+        await event.reply(HELP_TEXT, buttons=default_buttons())
         return
 
     if cmd == DEEPSEEK_CMD:
@@ -357,6 +396,21 @@ async def all_messages(event):
         await event.reply("Internal error occurred. Please try again later.")
         return
     asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
+
+
+@client.on(events.CallbackQuery)
+async def callback_query_handler(event):
+    """Handle presses of inline buttons."""
+    data = event.data.decode("utf-8")
+    if data == "voice_on":
+        VOICE_ENABLED[event.chat_id] = True
+        await event.respond("Voice responses enabled", buttons=default_buttons())
+    elif data == "voice_off":
+        VOICE_ENABLED[event.chat_id] = False
+        await event.respond("Voice responses disabled", buttons=default_buttons())
+    elif data == "search_docs":
+        await event.respond("Use /search <query> to search documents", buttons=default_buttons())
+    await event.answer()
 
 async def main():
     global BOT_USERNAME, BOT_ID

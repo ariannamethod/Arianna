@@ -27,6 +27,21 @@ HELP_TEXT = (
     f"{HELP_CMD} - show this help message"
 )
 
+def default_keyboard() -> dict:
+    """Inline keyboard with common actions."""
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "Voice On", "callback_data": "voice_on"},
+                {"text": "Voice Off", "callback_data": "voice_off"},
+            ],
+            [{"text": "Search docs", "callback_data": "search_docs"}],
+        ]
+    }
+
+
+VOICE_ENABLED = {}
+
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
     level=getattr(logging, LOG_LEVEL, logging.INFO),
@@ -54,7 +69,7 @@ DISABLE_FORMATTING = os.getenv("TELEGRAM_DISABLE_FORMATTING")
 PARSE_MODE = None if DISABLE_FORMATTING else os.getenv("TELEGRAM_PARSE_MODE", "MarkdownV2")
 
 async def send_message(chat_id: int, text: str) -> None:
-    payload = {"chat_id": chat_id, "text": text}
+    payload = {"chat_id": chat_id, "text": text, "reply_markup": default_keyboard()}
     if PARSE_MODE:
         payload["parse_mode"] = PARSE_MODE
     async with httpx.AsyncClient() as client:
@@ -97,6 +112,26 @@ async def root() -> dict:
 @app.post("/webhook")
 async def telegram_webhook(request: Request) -> dict:
     update = await request.json()
+
+    callback = update.get("callback_query")
+    if callback:
+        data = callback.get("data")
+        chat_id = callback["message"]["chat"]["id"]
+        if data == "voice_on":
+            VOICE_ENABLED[chat_id] = True
+            await send_message(chat_id, "Voice responses enabled")
+        elif data == "voice_off":
+            VOICE_ENABLED[chat_id] = False
+            await send_message(chat_id, "Voice responses disabled")
+        elif data == "search_docs":
+            await send_message(chat_id, "Use /search <query> to search documents")
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
+                json={"callback_query_id": callback.get("id")},
+            )
+        return {"ok": True}
+
     message = update.get("message") or update.get("edited_message")
     if not message:
         return {"ok": True}
