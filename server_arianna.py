@@ -1,5 +1,6 @@
 import os
 import re
+import argparse
 import asyncio
 import random
 import logging
@@ -105,10 +106,24 @@ def default_buttons():
     ]
 
 # --- optional behavior tuning ---
-GROUP_DELAY_MIN   = int(os.getenv("GROUP_DELAY_MIN", 120))   # 2 minutes
-GROUP_DELAY_MAX   = int(os.getenv("GROUP_DELAY_MAX", 600))   # 10 minutes
-PRIVATE_DELAY_MIN = int(os.getenv("PRIVATE_DELAY_MIN", 30))  # 30 seconds
-PRIVATE_DELAY_MAX = int(os.getenv("PRIVATE_DELAY_MAX", 180)) # 3 minutes
+arg_parser = argparse.ArgumentParser(add_help=False)
+arg_parser.add_argument("--group-delay-min", type=int, help="Min reply delay in group chats")
+arg_parser.add_argument("--group-delay-max", type=int, help="Max reply delay in group chats")
+arg_parser.add_argument("--private-delay-min", type=int, help="Min reply delay in private chats")
+arg_parser.add_argument("--private-delay-max", type=int, help="Max reply delay in private chats")
+arg_parser.add_argument("--no-delay", action="store_true", help="Disable reply delays")
+cli_args, _ = arg_parser.parse_known_args()
+
+DISABLE_DELAY = cli_args.no_delay or os.getenv("DISABLE_DELAY", "").lower() in ("1", "true", "yes")
+
+GROUP_DELAY_MIN = int(cli_args.group_delay_min if cli_args.group_delay_min is not None else os.getenv("GROUP_DELAY_MIN", 120))   # 2 minutes
+GROUP_DELAY_MAX = int(cli_args.group_delay_max if cli_args.group_delay_max is not None else os.getenv("GROUP_DELAY_MAX", 600))   # 10 minutes
+PRIVATE_DELAY_MIN = int(cli_args.private_delay_min if cli_args.private_delay_min is not None else os.getenv("PRIVATE_DELAY_MIN", 30))  # 30 seconds
+PRIVATE_DELAY_MAX = int(cli_args.private_delay_max if cli_args.private_delay_max is not None else os.getenv("PRIVATE_DELAY_MAX", 180)) # 3 minutes
+
+if DISABLE_DELAY:
+    GROUP_DELAY_MIN = GROUP_DELAY_MAX = PRIVATE_DELAY_MIN = PRIVATE_DELAY_MAX = 0
+
 FOLLOWUP_PROB     = float(os.getenv("FOLLOWUP_PROB", 0.2))
 FOLLOWUP_DELAY_MIN = int(os.getenv("FOLLOWUP_DELAY_MIN", 900))   # 15 minutes
 FOLLOWUP_DELAY_MAX = int(os.getenv("FOLLOWUP_DELAY_MAX", 7200))  # 2 hours
@@ -186,6 +201,8 @@ async def synthesize_voice(text: str) -> str:
                 logger.warning("Could not remove temporary file %s", ogg_path, exc_info=True)
 
 def _delay(is_group: bool) -> float:
+    if DISABLE_DELAY:
+        return 0.0
     return random.uniform(GROUP_DELAY_MIN, GROUP_DELAY_MAX) if is_group else random.uniform(PRIVATE_DELAY_MIN, PRIVATE_DELAY_MAX)
 
 async def send_delayed_response(event, resp: str, is_group: bool, thread_key: str):
