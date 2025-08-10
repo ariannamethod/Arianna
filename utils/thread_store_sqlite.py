@@ -3,6 +3,7 @@ import json
 import sqlite3
 import logging
 import time
+from typing import Optional
 
 THREADS_DB_PATH = "data/threads.sqlite"
 THREADS_JSON_PATH = "data/threads.json"
@@ -90,7 +91,7 @@ def save_threads(threads: dict, db_path: str = THREADS_DB_PATH) -> None:
         logger.exception("Failed to save threads to %s", db_path)
 
 
-def get_thread(user_id: str, db_path: str = THREADS_DB_PATH) -> str | None:
+def get_thread(user_id: str, db_path: str = THREADS_DB_PATH) -> Optional[str]:
     """Fetch thread_id for a single user_id from SQLite."""
     try:
         _init_db(db_path)
@@ -105,7 +106,9 @@ def get_thread(user_id: str, db_path: str = THREADS_DB_PATH) -> str | None:
         return None
 
 
-def set_thread(user_id: str, thread_id: str | None, db_path: str = THREADS_DB_PATH) -> None:
+def set_thread(
+    user_id: str, thread_id: Optional[str], db_path: str = THREADS_DB_PATH
+) -> None:
     """Insert, update or delete a thread mapping for a single user_id."""
     try:
         _init_db(db_path)
