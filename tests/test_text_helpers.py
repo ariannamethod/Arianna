@@ -1,6 +1,6 @@
+import asyncio
 import aiohttp
-import pytest
-
+import utils.text_helpers as th
 from utils.text_helpers import extract_text_from_url
 
 
@@ -35,22 +35,23 @@ class MockSession:
         return self._response
 
 
-@pytest.mark.asyncio
-async def test_extract_text_from_url_success(monkeypatch):
+def test_extract_text_from_url_success(monkeypatch):
     html = (
         "<html><body><script>ignore()</script><p>Hello</p>"
         "<style>.a{}</style></body></html>"
     )
     response = MockResponse(html)
-    monkeypatch.setattr(
-        aiohttp, "ClientSession", lambda: MockSession(response)
-    )
-    text = await extract_text_from_url("http://example.com")
-    assert text == "Hello"
+    monkeypatch.setattr(aiohttp, "ClientSession", lambda: MockSession(response))
+
+    async def run_test():
+        text = await extract_text_from_url("http://example.com")
+        assert text == "Hello"
+        await th.close_session()
+
+    asyncio.run(run_test())
 
 
-@pytest.mark.asyncio
-async def test_extract_text_from_url_error(monkeypatch):
+def test_extract_text_from_url_error(monkeypatch):
     class FailingSession:
         async def __aenter__(self):
             return self
@@ -62,5 +63,10 @@ async def test_extract_text_from_url_error(monkeypatch):
             raise Exception("boom")
 
     monkeypatch.setattr(aiohttp, "ClientSession", lambda: FailingSession())
-    text = await extract_text_from_url("http://example.com")
-    assert text.startswith("[Error loading page:")
+
+    async def run_test():
+        text = await extract_text_from_url("http://example.com")
+        assert text.startswith("[Error loading page:")
+        await th.close_session()
+
+    asyncio.run(run_test())

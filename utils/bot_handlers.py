@@ -12,6 +12,7 @@ INDEX_CMD = "/index"
 
 URL_REGEX = re.compile(r"https://\S+")
 URL_FETCH_TIMEOUT = int(os.getenv("URL_FETCH_TIMEOUT", 10))
+URL_FETCH_CONCURRENCY = int(os.getenv("URL_FETCH_CONCURRENCY", 5))
 
 # Chance to ignore very short or non-question messages.
 # Set to 0 to disable random skipping.
@@ -25,7 +26,15 @@ async def append_link_snippets(text: str) -> str:
     urls = URL_REGEX.findall(text)
     if not urls:
         return text
-    tasks = [asyncio.wait_for(extract_text_from_url(url), URL_FETCH_TIMEOUT) for url in urls]
+    sem = asyncio.Semaphore(URL_FETCH_CONCURRENCY)
+
+    async def fetch(url: str):
+        async with sem:
+            return await asyncio.wait_for(
+                extract_text_from_url(url), URL_FETCH_TIMEOUT
+            )
+
+    tasks = [fetch(url) for url in urls]
     snippets = await asyncio.gather(*tasks, return_exceptions=True)
     parts = [text]
     for url, snippet in zip(urls, snippets):
