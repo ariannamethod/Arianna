@@ -5,6 +5,7 @@ import random
 
 import httpx
 from fastapi import FastAPI, Request
+from fastapi.staticfiles import StaticFiles
 
 from utils.arianna_engine import AriannaEngine
 from utils.thread_store_sqlite import cleanup_old_threads
@@ -28,6 +29,9 @@ HELP_TEXT = (
     f"{HELP_CMD} - show this help message"
 )
 
+WEB_APP_URL = os.getenv("WEB_APP_URL", "https://example.com/app")
+WEB_APP_DIR = os.getenv("WEB_APP_DIR", "web_app")
+
 def default_keyboard() -> dict:
     """Inline keyboard with common actions."""
     return {
@@ -37,6 +41,7 @@ def default_keyboard() -> dict:
                 {"text": "Voice Off", "callback_data": "voice_off"},
             ],
             [{"text": "Search docs", "callback_data": "search_docs"}],
+            [{"text": "Open", "web_app": {"url": WEB_APP_URL}}],
         ]
     }
 
@@ -61,6 +66,7 @@ if not OPENAI_API_KEY:
     raise SystemExit("Missing OPENAI_API_KEY")
 
 app = FastAPI()
+app.mount("/app", StaticFiles(directory=WEB_APP_DIR, html=True), name="app")
 THREAD_TTL_DAYS = int(os.getenv("THREAD_TTL_DAYS", "30"))
 cleanup_old_threads(THREAD_TTL_DAYS)
 engine = AriannaEngine()
@@ -139,6 +145,13 @@ async def telegram_webhook(request: Request) -> dict:
 
     message = update.get("message") or update.get("edited_message")
     if not message:
+        return {"ok": True}
+
+    web_app_data = message.get("web_app_data")
+    if web_app_data:
+        chat_id = message["chat"]["id"]
+        data = web_app_data.get("data", "")
+        await send_message(chat_id, f"Received web app data: {data}")
         return {"ok": True}
 
     chat = message["chat"]

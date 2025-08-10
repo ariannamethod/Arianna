@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Arianna Web App</title>
+    <script>
+        function sendData() {
+            if (window.Telegram && Telegram.WebApp && Telegram.WebApp.sendData) {
+                Telegram.WebApp.sendData(document.getElementById('msg').value);
+            }
+        }
+    </script>
+</head>
+<body>
+    <h1>Arianna Web App</h1>
+    <input id="msg" placeholder="Type something" />
+    <button onclick="sendData()">Send to Bot</button>
+</body>
+</html>

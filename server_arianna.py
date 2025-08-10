@@ -5,6 +5,7 @@ import random
 import logging
 import tempfile
 import inspect
+from types import SimpleNamespace
 from typing import Optional
 
 import openai
@@ -93,11 +94,14 @@ HELP_TEXT = (
     f"{HELP_CMD} - show this help message"
 )
 
+WEB_APP_URL = os.getenv("WEB_APP_URL", "https://example.com/app")
+
 def default_buttons():
     """Inline buttons for common actions."""
     return [
         [Button.inline("Voice On", b"voice_on"), Button.inline("Voice Off", b"voice_off")],
         [Button.inline("Search docs", b"search_docs")],
+        [Button.web_app("Open", WEB_APP_URL)],
     ]
 
 # --- optional behavior tuning ---
@@ -421,13 +425,18 @@ async def callback_query_handler(event):
 
 async def main():
     global BOT_USERNAME, BOT_ID
-    if BOT_TOKEN:
-        await client.start(bot_token=BOT_TOKEN)
-    elif SESSION_STRING:
-        await client.start()
-    else:
-        await client.start(phone=PHONE)
-    me = await client.get_me()
+    start = getattr(client, "start", None)
+    if start:
+        if BOT_TOKEN:
+            await start(bot_token=BOT_TOKEN)
+        elif SESSION_STRING:
+            await start()
+        else:
+            await start(phone=PHONE)
+    me = SimpleNamespace(username="", id=0)
+    get_me = getattr(client, "get_me", None)
+    if get_me:
+        me = await get_me()
     BOT_USERNAME = (me.username or "").lower()
     BOT_ID = me.id
     try:
@@ -438,7 +447,9 @@ async def main():
         raise SystemExit(1)
     logger.info("🚀 Arianna client started")
     try:
-        await client.run_until_disconnected()
+        runner = getattr(client, "run_until_disconnected", None)
+        if runner:
+            await runner()
     finally:
         await engine.aclose()
         await openai_client.close()
