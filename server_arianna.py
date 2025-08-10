@@ -256,7 +256,7 @@ async def all_messages(event):
     user_id = str(event.sender_id)
     text = event.raw_text or ""
 
-    cmd, arg = parse_command(text)
+    cmd, arg = parse_command(text, BOT_USERNAME)
     if cmd == SEARCH_CMD:
         if not arg:
             logger.info("Search command missing argument")

@@ -35,6 +35,12 @@ def test_parse_command():
     assert arg == "no command here"
 
 
+def test_parse_command_with_bot_username():
+    cmd, arg = bh.parse_command("/voiceon@mybot", bot_username="mybot")
+    assert cmd == bh.VOICE_ON_CMD
+    assert arg == ""
+
+
 def test_dispatch_response_splits():
     parts = []
 
