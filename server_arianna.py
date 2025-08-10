@@ -10,7 +10,7 @@ from typing import Optional
 import openai
 import httpx
 from pydub import AudioSegment
-from telethon import TelegramClient, events
+from telethon import TelegramClient, events, functions, types
 from telethon.tl.types import MessageEntityMention
 from telethon.sessions import StringSession
 
@@ -369,6 +369,16 @@ async def main():
     me = await client.get_me()
     BOT_USERNAME = (me.username or "").lower()
     BOT_ID = me.id
+    commands = [
+        types.BotCommand(command=SEARCH_CMD[1:], description="semantic search documents"),
+        types.BotCommand(command=INDEX_CMD[1:], description="index documents"),
+        types.BotCommand(command=DEEPSEEK_CMD[1:], description="ask DeepSeek"),
+        types.BotCommand(command=VOICE_ON_CMD[1:], description="enable voice responses"),
+        types.BotCommand(command=VOICE_OFF_CMD[1:], description="disable voice responses"),
+        types.BotCommand(command=HELP_CMD[1:], description="show help message"),
+    ]
+    await client.set_bot_commands(commands)
+    await client(functions.bots.SetBotMenuButtonRequest(button=types.BotMenuButtonCommands()))
     try:
         await engine.setup_assistant()
     except RuntimeError:

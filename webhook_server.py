@@ -78,6 +78,20 @@ async def startup() -> None:
                 f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
                 json={"url": webhook_url},
             )
+        commands = [
+            {"command": SEARCH_CMD[1:], "description": "semantic search documents"},
+            {"command": INDEX_CMD[1:], "description": "index documents"},
+            {"command": DEEPSEEK_CMD[1:], "description": "ask DeepSeek"},
+            {"command": HELP_CMD[1:], "description": "show help message"},
+        ]
+        await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/setMyCommands",
+            json={"commands": commands},
+        )
+        await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/setChatMenuButton",
+            json={"menu_button": {"type": "commands"}},
+        )
     try:
         await engine.setup_assistant()
     except RuntimeError:
