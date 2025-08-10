@@ -11,7 +11,7 @@ def test_log_event_appends_event(tmp_path, monkeypatch):
     journal.log_event({"action": "test"})
 
     with open(log_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+        data = [json.loads(line) for line in f if line.strip()]
 
     assert data[0]["action"] == "test"
     assert "ts" in data[0]

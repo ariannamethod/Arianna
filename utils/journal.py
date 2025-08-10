@@ -11,18 +11,16 @@ logger = logging.getLogger("journal")
 
 def log_event(event):
     """
-    Appends an event with a timestamp to the journal log in JSON format.
+    Append an event with a timestamp to the journal log in JSON Lines format.
     Errors are logged.
     """
     try:
-        if not os.path.isfile(LOG_PATH):
-            with open(LOG_PATH, "w", encoding="utf-8") as f:
-                f.write("[]")
-        with open(LOG_PATH, "r", encoding="utf-8") as f:
-            log = json.load(f)
-        log.append({"ts": datetime.now().isoformat(), **event})
-        with open(LOG_PATH, "w", encoding="utf-8") as f:
-            json.dump(log, f, ensure_ascii=False, indent=2)
+        os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(
+                json.dumps({"ts": datetime.now().isoformat(), **event}, ensure_ascii=False)
+                + "\n"
+            )
     except Exception:
         logger.exception("Error writing log event")
 
