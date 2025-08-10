@@ -45,6 +45,7 @@ async def test_openai_client_closed(monkeypatch):
     )
 
     server_arianna = importlib.import_module("server_arianna")
+    server_arianna = importlib.reload(server_arianna)
 
     monkeypatch.setattr(server_arianna.engine, "setup_assistant", AsyncMock())
     monkeypatch.setattr(server_arianna.engine, "aclose", AsyncMock())
