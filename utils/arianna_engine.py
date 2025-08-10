@@ -5,10 +5,11 @@ import httpx
 import logging
 import time
 import textwrap
+from collections import OrderedDict
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 from utils.deepseek_search import call_deepseek
 from utils.journal import log_event
-from utils.thread_store_sqlite import load_threads, save_threads, touch_thread
+from utils.thread_store_sqlite import get_thread, set_thread, touch_thread
 
 
 ASSISTANT_ID_PATH = "data/assistant_id.json"
@@ -36,7 +37,8 @@ class AriannaEngine:
         # Timeout (in seconds) for all HTTP requests
         self.request_timeout = 30
         self.assistant_id = None
-        self.threads      = load_threads()  # user_id → thread_id
+        self.thread_cache: OrderedDict[str, str] = OrderedDict()
+        self._cache_max = int(os.getenv("THREAD_CACHE_SIZE", "512"))
         self.client       = httpx.AsyncClient(headers=self.headers, timeout=self.request_timeout)
 
     async def aclose(self) -> None:
@@ -151,19 +153,26 @@ class AriannaEngine:
 
     async def _get_thread(self, key: str) -> str:
         """Get or create a thread for the given key."""
-        if key not in self.threads:
-            try:
-                r = await self.client.post(
-                    "https://api.openai.com/v1/threads",
-                    json={"metadata": {"thread_key": key}},
-                )
-                r.raise_for_status()
-                self.threads[key] = r.json()["id"]
-            except httpx.TimeoutException:
-                self.logger.error("OpenAI request timed out when creating thread")
-                raise
-            save_threads({key: self.threads[key]})
-        tid = self.threads[key]
+        tid = self.thread_cache.get(key)
+        if tid is None:
+            tid = get_thread(key)
+            if tid is None:
+                try:
+                    r = await self.client.post(
+                        "https://api.openai.com/v1/threads",
+                        json={"metadata": {"thread_key": key}},
+                    )
+                    r.raise_for_status()
+                    tid = r.json()["id"]
+                except httpx.TimeoutException:
+                    self.logger.error("OpenAI request timed out when creating thread")
+                    raise
+                set_thread(key, tid)
+            self.thread_cache[key] = tid
+            if len(self.thread_cache) > self._cache_max:
+                self.thread_cache.popitem(last=False)
+        else:
+            self.thread_cache.move_to_end(key)
         touch_thread(key)
         await self._trim_thread(tid)
         return tid
@@ -188,7 +197,8 @@ class AriannaEngine:
         except Exception as e:
             self.logger.error("Failed to post user message", exc_info=e)
             # Try to recreate the thread in case the ID became invalid
-            self.threads.pop(thread_key, None)
+            self.thread_cache.pop(thread_key, None)
+            set_thread(thread_key, None)
             tid = await self._get_thread(thread_key)
             try:
                 msg = await self.client.post(

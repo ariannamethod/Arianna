@@ -90,6 +90,41 @@ def save_threads(threads: dict, db_path: str = THREADS_DB_PATH) -> None:
         logger.exception("Failed to save threads to %s", db_path)
 
 
+def get_thread(user_id: str, db_path: str = THREADS_DB_PATH) -> str | None:
+    """Fetch thread_id for a single user_id from SQLite."""
+    try:
+        _init_db(db_path)
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.execute(
+                "SELECT thread_id FROM threads WHERE user_id = ?", (user_id,)
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+    except Exception:
+        logger.exception("Failed to get thread for %s", user_id)
+        return None
+
+
+def set_thread(user_id: str, thread_id: str | None, db_path: str = THREADS_DB_PATH) -> None:
+    """Insert, update or delete a thread mapping for a single user_id."""
+    try:
+        _init_db(db_path)
+        with sqlite3.connect(db_path) as conn:
+            if thread_id is None:
+                conn.execute("DELETE FROM threads WHERE user_id = ?", (user_id,))
+            else:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO threads (user_id, thread_id, last_used)
+                    VALUES (?, ?, ?)
+                    """,
+                    (user_id, thread_id, int(time.time())),
+                )
+            conn.commit()
+    except Exception:
+        logger.exception("Failed to set thread for %s", user_id)
+
+
 def touch_thread(user_id: str, db_path: str = THREADS_DB_PATH) -> None:
     """Update last_used for the given user id."""
     try:
