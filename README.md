@@ -47,8 +47,37 @@ Create a `.env` file based on `.env.example` and fill in all the required API ke
 ```bash
 cp .env.example .env
 ```
+### Mandatory environment variables
 
-Set the variables from this file in your environment before running the bot. You can either `source` the file or use `python -m dotenv`:
+**OpenAI**
+
+- `OPENAI_API_KEY` – OpenAI key used for chat, embedding and voice features.
+
+**Telegram**
+
+- `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` – credentials from https://my.telegram.org.
+- `TELEGRAM_PHONE` – phone number used to create the session (not needed in bot mode).
+- `TELEGRAM_SESSION_STRING` – exported Telethon session string.
+- `TELEGRAM_BOT_TOKEN` (or legacy `TELEGRAM_TOKEN`) – bot token for bot mode.
+- `TELEGRAM_WEBHOOK_URL` – public URL for registering webhooks with `webhook_server.py`.
+
+**Pinecone** (required for semantic search)
+
+- `PINECONE_API_KEY` – Pinecone API key.
+- `PINECONE_INDEX` – Pinecone index name.
+- `PINECONE_ENV` – Pinecone environment (e.g. `us-west1-gcp`).
+
+**Delay and skip overrides**
+
+- `GROUP_DELAY_MIN` / `GROUP_DELAY_MAX` – reply delay range in groups (seconds, default `120`–`600`).
+- `PRIVATE_DELAY_MIN` / `PRIVATE_DELAY_MAX` – reply delay range in private chats (seconds, default `30`–`180`).
+- `SKIP_SHORT_PROB` – chance to ignore short or non‑question group messages (default `0.5`).
+- `FOLLOWUP_PROB` – probability of sending a follow‑up later (default `0.2`).
+- `FOLLOWUP_DELAY_MIN` / `FOLLOWUP_DELAY_MAX` – follow‑up delay range (seconds, default `900`–`7200`).
+
+Set `DEEPSEEK_API_KEY` to enable the optional `/ds` command.
+
+Set the variables from `.env` in your environment before running the bot. You can either `source` the file or use `python -m dotenv`:
 
 ```bash
 source .env
@@ -56,24 +85,27 @@ source .env
 python -m dotenv run -- python server_arianna.py
 ```
 
-Important variables include `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_PHONE`, `TELEGRAM_SESSION_STRING`, and `OPENAI_API_KEY`. Set `DEEPSEEK_API_KEY` to enable the optional DeepSeek integration; the `/ds` command will be disabled if it is not provided. Set `TELEGRAM_BOT_TOKEN` (or legacy `TELEGRAM_TOKEN`) to run the client in bot mode. Pinecone settings (`PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_ENV`) are also required if you use semantic search.
-Several optional variables fine‑tune the bot's behavior:
-
-- `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 120–600).
-- `PRIVATE_DELAY_MIN`/`PRIVATE_DELAY_MAX` – range for private chats (default 30–180).
-- `SKIP_SHORT_PROB` – chance to ignore very short or non‑question messages in group chats (default 0.5). Skipped messages receive the hint "Уточните вопрос." Private chats use 0 by default.
-- `FOLLOWUP_PROB` – probability of sending a follow‑up later (default 0.2).
-- `FOLLOWUP_DELAY_MIN`/`FOLLOWUP_DELAY_MAX` – delay range for follow‑ups in seconds (default 900–7200).
-
 ## Running the bot
 
-Run the Telegram client with:
+### Polling mode
+
+Launch the long‑polling client with:
 
 ```bash
 python server_arianna.py
 ```
 
-If `TELEGRAM_BOT_TOKEN` (or `TELEGRAM_TOKEN`) is set the script logs in as a bot and no phone number is required. Otherwise, on the first start Telethon will ask for your phone number and a verification code. The resulting credentials are stored in `arianna.session`. Delete this file if you need to re-authenticate later.
+If `TELEGRAM_BOT_TOKEN` (or `TELEGRAM_TOKEN`) is set the script logs in as a bot and no phone number is required. Otherwise, on the first start Telethon will ask for your phone number and a verification code. The resulting credentials are stored in `arianna.session`. Delete this file if you need to re‑authenticate later.
+
+### Webhook mode
+
+Start a FastAPI server that processes Telegram webhooks:
+
+```bash
+uvicorn webhook_server:app --host 0.0.0.0 --port 8000
+```
+
+Ensure `TELEGRAM_WEBHOOK_URL` points to the public HTTPS URL that forwards requests to this server.
 
 The bot stores conversation history in memory using your Telegram user ID.
 Unless you implement persistent storage, this memory resets each time the
@@ -147,6 +179,13 @@ The bot intentionally filters some messages:
 - In group chats she replies only when mentioned or when you answer one of her messages.
 - Very short texts or those without a question mark are skipped with probability controlled by `SKIP_SHORT_PROB` (default `0.5` in groups, `0` in private chats). When this happens, the bot replies with "Уточните вопрос." Set `SKIP_SHORT_PROB=0` to disable this in groups as well.
 - Voice messages that cannot be transcribed are ignored.
+
+## Troubleshooting
+
+- **`OPENAI_API_KEY`/Telegram errors on startup** – the application exits with a clear error if a required environment variable is missing. Double‑check the `.env` file was loaded.
+- **Pinecone `RuntimeError: PINECONE_API_KEY and PINECONE_INDEX must be set`** – ensure all Pinecone variables are present when using `/search` or `/index`.
+- **Webhook server returns 404** – verify `TELEGRAM_WEBHOOK_URL` matches your public endpoint and that the FastAPI server is running.
+- **Session or auth issues** – delete `arianna.session` and regenerate `TELEGRAM_SESSION_STRING` if Telethon cannot log in.
 
 ## Deployment
 
