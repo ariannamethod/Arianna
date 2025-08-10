@@ -10,7 +10,8 @@ from typing import Optional
 import openai
 import httpx
 from pydub import AudioSegment
-from telethon import TelegramClient, events, Button
+import telethon
+from telethon import events, Button
 from telethon.tl.types import MessageEntityMention
 from telethon.sessions import StringSession
 
@@ -68,11 +69,11 @@ def create_telegram_client(
     phone: Optional[str] = None,
     bot_token: Optional[str] = None,
     session_string: Optional[str] = None,
-) -> TelegramClient:
+) -> telethon.TelegramClient:
     if session_string:
-        return TelegramClient(StringSession(session_string), API_ID, API_HASH)
+        return telethon.TelegramClient(StringSession(session_string), API_ID, API_HASH)
     session_name = "arianna_bot" if bot_token else "arianna"
-    return TelegramClient(session_name, API_ID, API_HASH)
+    return telethon.TelegramClient(session_name, API_ID, API_HASH)
 
 
 THREAD_TTL_DAYS = int(os.getenv("THREAD_TTL_DAYS", "30"))
@@ -93,11 +94,18 @@ HELP_TEXT = (
     f"{HELP_CMD} - show this help message"
 )
 
-def default_buttons():
-    """Inline buttons for common actions."""
+WEB_APP_URL = os.getenv("WEB_APP_URL", "https://example.com")
+
+def build_keyboard(chat_id: int):
+    """Inline keyboard reflecting the current voice state."""
+    voice_button = (
+        Button.inline("Voice Off", b"voice_off")
+        if VOICE_ENABLED.get(chat_id)
+        else Button.inline("Voice On", b"voice_on")
+    )
     return [
-        [Button.inline("Voice On", b"voice_on"), Button.inline("Voice Off", b"voice_off")],
-        [Button.inline("Search docs", b"search_docs")],
+        [voice_button, Button.inline("Search docs", b"search_docs")],
+        [Button.inline("Open Web App", b"open_webapp")],
     ]
 
 # --- optional behavior tuning ---
@@ -196,7 +204,7 @@ async def send_delayed_response(event, resp: str, is_group: bool, thread_key: st
                 voice_path,
                 caption=resp[:1024],
                 parse_mode=PARSE_MODE,
-                buttons=default_buttons(),
+                buttons=build_keyboard(event.chat_id),
             )
             os.remove(voice_path)
         else:
@@ -204,7 +212,7 @@ async def send_delayed_response(event, resp: str, is_group: bool, thread_key: st
                 event.chat_id,
                 voice_path,
                 parse_mode=PARSE_MODE,
-                buttons=default_buttons(),
+                buttons=build_keyboard(event.chat_id),
             )
     else:
         async def send(chunk: str) -> None:
@@ -212,7 +220,7 @@ async def send_delayed_response(event, resp: str, is_group: bool, thread_key: st
                 event.chat_id,
                 chunk,
                 parse_mode=PARSE_MODE,
-                buttons=default_buttons(),
+                buttons=build_keyboard(event.chat_id),
             )
         await dispatch_response(send, resp)
     if random.random() < FOLLOWUP_PROB:
@@ -236,7 +244,7 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
                 voice_path,
                 caption=resp[:1024],
                 parse_mode=PARSE_MODE,
-                buttons=default_buttons(),
+                buttons=build_keyboard(chat_id),
             )
             os.remove(voice_path)
         else:
@@ -244,7 +252,7 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
                 chat_id,
                 voice_path,
                 parse_mode=PARSE_MODE,
-                buttons=default_buttons(),
+                buttons=build_keyboard(chat_id),
             )
     else:
         async def send(chunk: str) -> None:
@@ -252,7 +260,7 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
                 chat_id,
                 chunk,
                 parse_mode=PARSE_MODE,
-                buttons=default_buttons(),
+                buttons=build_keyboard(chat_id),
             )
         await dispatch_response(send, resp)
 
@@ -325,14 +333,14 @@ async def all_messages(event):
 
     if text.strip().lower() == VOICE_ON_CMD:
         VOICE_ENABLED[event.chat_id] = True
-        await event.reply("Voice responses enabled", buttons=default_buttons())
+        await event.reply("Voice responses enabled", buttons=build_keyboard(event.chat_id))
         return
     if text.strip().lower() == VOICE_OFF_CMD:
         VOICE_ENABLED[event.chat_id] = False
-        await event.reply("Voice responses disabled", buttons=default_buttons())
+        await event.reply("Voice responses disabled", buttons=build_keyboard(event.chat_id))
         return
     if text.strip().lower() == HELP_CMD:
-        await event.reply(HELP_TEXT, buttons=default_buttons())
+        await event.reply(HELP_TEXT, buttons=build_keyboard(event.chat_id))
         return
 
     if cmd == DEEPSEEK_CMD:
@@ -411,16 +419,25 @@ async def callback_query_handler(event):
     data = event.data.decode("utf-8")
     if data == "voice_on":
         VOICE_ENABLED[event.chat_id] = True
-        await event.respond("Voice responses enabled", buttons=default_buttons())
+        await event.respond("Voice responses enabled", buttons=build_keyboard(event.chat_id))
     elif data == "voice_off":
         VOICE_ENABLED[event.chat_id] = False
-        await event.respond("Voice responses disabled", buttons=default_buttons())
+        await event.respond("Voice responses disabled", buttons=build_keyboard(event.chat_id))
     elif data == "search_docs":
-        await event.respond("Use /search <query> to search documents", buttons=default_buttons())
+        await event.respond("Use /search <query> to search documents", buttons=build_keyboard(event.chat_id))
+    elif data == "open_webapp":
+        await event.respond(
+            "Open the web application",
+            buttons=[[Button.url("Open Web App", WEB_APP_URL)]],
+        )
     await event.answer()
 
 async def main():
-    global BOT_USERNAME, BOT_ID
+    global BOT_USERNAME, BOT_ID, client
+    if not hasattr(client, "start"):
+        client = create_telegram_client(
+            phone=PHONE, bot_token=BOT_TOKEN, session_string=SESSION_STRING
+        )
     if BOT_TOKEN:
         await client.start(bot_token=BOT_TOKEN)
     elif SESSION_STRING:
