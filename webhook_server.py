@@ -5,6 +5,7 @@ import random
 
 import httpx
 from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse
 
 from utils.arianna_engine import AriannaEngine
 from utils.vector_store import semantic_search, vectorize_all_files
@@ -44,6 +45,9 @@ if not OPENAI_API_KEY:
     logger.error("OPENAI_API_KEY environment variable is not set")
     raise SystemExit("Missing OPENAI_API_KEY")
 
+BASE_URL = os.getenv("TELEGRAM_WEBHOOK_URL", "http://localhost:8000")
+WEBAPP_URL = f"{BASE_URL.rstrip('/')}/webapp"
+
 app = FastAPI()
 engine = AriannaEngine()
 
@@ -53,10 +57,12 @@ BOT_ID = 0
 DISABLE_FORMATTING = os.getenv("TELEGRAM_DISABLE_FORMATTING")
 PARSE_MODE = None if DISABLE_FORMATTING else os.getenv("TELEGRAM_PARSE_MODE", "MarkdownV2")
 
-async def send_message(chat_id: int, text: str) -> None:
+async def send_message(chat_id: int, text: str, reply_markup: dict | None = None) -> None:
     payload = {"chat_id": chat_id, "text": text}
     if PARSE_MODE:
         payload["parse_mode"] = PARSE_MODE
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     async with httpx.AsyncClient() as client:
         await client.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
@@ -93,6 +99,11 @@ async def shutdown() -> None:
 @app.get("/")
 async def root() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/webapp")
+async def webapp_page() -> FileResponse:
+    return FileResponse("webapp/index.html")
 
 @app.post("/webhook")
 async def telegram_webhook(request: Request) -> dict:
@@ -142,7 +153,8 @@ async def telegram_webhook(request: Request) -> dict:
         return {"ok": True}
 
     if text.strip().lower() == HELP_CMD:
-        await send_message(chat_id, HELP_TEXT)
+        markup = {"inline_keyboard": [[{"text": "⚙️ Settings", "web_app": {"url": WEBAPP_URL}}]]}
+        await send_message(chat_id, HELP_TEXT, reply_markup=markup)
         return {"ok": True}
 
     mentioned = False

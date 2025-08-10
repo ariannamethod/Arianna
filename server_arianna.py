@@ -10,8 +10,8 @@ from typing import Optional
 import openai
 import httpx
 from pydub import AudioSegment
-from telethon import TelegramClient, events
-from telethon.tl.types import MessageEntityMention
+from telethon import TelegramClient, events, Button
+from telethon.tl.types import MessageEntityMention, WebAppInfo
 from telethon.sessions import StringSession
 
 from utils.arianna_engine import AriannaEngine
@@ -89,6 +89,9 @@ HELP_TEXT = (
     f"{VOICE_OFF_CMD} - disable voice responses\n"
     f"{HELP_CMD} - show this help message"
 )
+
+BASE_URL = os.getenv("TELEGRAM_WEBHOOK_URL", "http://localhost:8000")
+WEBAPP_URL = f"{BASE_URL.rstrip('/')}/webapp"
 
 # --- optional behavior tuning ---
 GROUP_DELAY_MIN   = int(os.getenv("GROUP_DELAY_MIN", 120))   # 2 minutes
@@ -288,7 +291,8 @@ async def all_messages(event):
         await event.reply("Voice responses disabled")
         return
     if text.strip().lower() == HELP_CMD:
-        await event.reply(HELP_TEXT)
+        button = Button.web_app("⚙️ Settings", WebAppInfo(WEBAPP_URL))
+        await event.reply(HELP_TEXT, buttons=button)
         return
 
     if cmd == DEEPSEEK_CMD:
