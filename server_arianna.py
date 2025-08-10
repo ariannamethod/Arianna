@@ -82,13 +82,8 @@ def create_telegram_client(
 
 THREAD_TTL_DAYS = int(os.getenv("THREAD_TTL_DAYS", "30"))
 cleanup_old_threads(THREAD_TTL_DAYS)
-# Создаем клиент только с session_string, если она есть
-if SESSION_STRING:
-    client = create_telegram_client(session_string=SESSION_STRING)
-elif BOT_TOKEN:
-    client = create_telegram_client(bot_token=BOT_TOKEN)
-else:
-    client = create_telegram_client(phone=PHONE)
+# Используем только строковую сессию для авторизации
+client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
 engine = AriannaEngine()
 openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 VOICE_ON_CMD = "/voiceon"
@@ -448,8 +443,13 @@ async def callback_query_handler(event):
 
 async def main():
     global BOT_USERNAME, BOT_ID
-    # Запускаем клиент без параметров, т.к. они уже переданы при создании
-    await client.start()
+    # Простой запуск клиента с сессией
+    try:
+        await client.start()
+        logger.info("Успешное подключение к Telegram")
+    except Exception as e:
+        logger.error(f"Ошибка подключения к Telegram: {e}")
+        raise SystemExit(f"Не удалось подключиться к Telegram: {e}")
     me = await client.get_me()
     if BOT_TOKEN or getattr(me, "bot", False):
         await client.set_bot_commands(
@@ -471,7 +471,8 @@ async def main():
         logger.exception("Assistant initialization failed")
         await engine.aclose()
         raise SystemExit(1)
-    logger.info("🚀 Arianna client started")
+    logger.info("🚀 Arianna client started with session_string")
+    logger.info(f"API_ID: {API_ID}, SESSION_STRING length: {len(SESSION_STRING)}")
     try:
         await client.run_until_disconnected()
     finally:
