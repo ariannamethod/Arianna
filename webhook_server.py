@@ -1,31 +1,12 @@
 import os
-import re
 import logging
-import random
 
 import httpx
 from fastapi import FastAPI, Request
 
 from utils.arianna_engine import AriannaEngine
-from utils.vector_store import semantic_search, vectorize_all_files
-from utils.deepseek_search import DEEPSEEK_ENABLED
-from utils.bot_handlers import (
-    append_link_snippets,
-    parse_command,
-    dispatch_response,
-    DEEPSEEK_CMD,
-    SEARCH_CMD,
-    INDEX_CMD,
-    SKIP_SHORT_PROB,
-)
-
-HELP_CMD = "/help"
-HELP_TEXT = (
-    f"{SEARCH_CMD} <query> - semantic search documents\n"
-    f"{INDEX_CMD} - index documents\n"
-    f"{DEEPSEEK_CMD} <query> - ask DeepSeek\n"
-    f"{HELP_CMD} - show this help message"
-)
+from utils.bot_handlers import dispatch_response
+from utils.message_router import route_message
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -109,78 +90,30 @@ async def telegram_webhook(request: Request) -> dict:
     if not text:
         return {"ok": True}
 
-    cmd, arg = parse_command(text)
-    if cmd == SEARCH_CMD:
-        if arg:
-            chunks = await semantic_search(arg, engine.openai_key)
-            if not chunks:
-                await send_message(chat_id, "No relevant documents found.")
-            else:
-                async def send(part: str) -> None:
-                    await send_message(chat_id, part)
-                for ch in chunks:
-                    await dispatch_response(send, ch)
-        return {"ok": True}
+    is_reply = False
+    if message.get("reply_to_message"):
+        if message["reply_to_message"].get("from", {}).get("id") == BOT_ID:
+            is_reply = True
 
-    if cmd == INDEX_CMD:
-        await send_message(chat_id, "Indexing documents, please wait...")
-        async def sender(msg: str) -> None:
-            await send_message(chat_id, msg)
-        await vectorize_all_files(engine.openai_key, force=True, on_message=sender)
-        await send_message(chat_id, "Indexing complete.")
-        return {"ok": True}
-
-    if cmd == DEEPSEEK_CMD:
-        if not DEEPSEEK_ENABLED:
-            await send_message(chat_id, "DeepSeek integration is not configured")
-            return {"ok": True}
-        if arg:
-            resp = await engine.deepseek_reply(arg)
-            async def send(part: str) -> None:
-                await send_message(chat_id, part)
-            await dispatch_response(send, resp)
-        return {"ok": True}
-
-    if text.strip().lower() == HELP_CMD:
-        await send_message(chat_id, HELP_TEXT)
-        return {"ok": True}
-
-    mentioned = False
-    if not is_group:
-        mentioned = True
-    else:
-        if re.search(r"\b(arianna|арианна)\b", text, re.I):
-            mentioned = True
-        elif BOT_USERNAME and f"@{BOT_USERNAME}" in text.lower():
-            mentioned = True
-        if message.get("entities"):
-            for ent in message["entities"]:
-                if ent.get("type") == "mention":
-                    ent_text = text[ent["offset"]: ent["offset"] + ent["length"]]
-                    if ent_text[1:].lower() == BOT_USERNAME:
-                        mentioned = True
-                        break
-        if message.get("reply_to_message"):
-            if message["reply_to_message"].get("from", {}).get("id") == BOT_ID:
-                mentioned = True
-
-    if not mentioned:
-        return {"ok": True}
-
-    if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
-            return {"ok": True}
-
-    thread_key = str(chat_id) if is_group else str(message["from"]["id"])
-    prompt = await append_link_snippets(text)
-    try:
-        resp = await engine.ask(thread_key, prompt, is_group=is_group)
-    except httpx.TimeoutException:
-        await send_message(chat_id, "Request timed out. Please try again later.")
-        return {"ok": True}
-
-    async def send(part: str) -> None:
+    async def send_msg(part: str) -> None:
         await send_message(chat_id, part)
-    await dispatch_response(send, resp)
+
+    async def answer(resp: str, thread_key: str, is_group_flag: bool) -> None:
+        async def send(part: str) -> None:
+            await send_message(chat_id, part)
+        await dispatch_response(send, resp)
+
+    await route_message(
+        text,
+        chat_id,
+        message["from"]["id"],
+        is_group=is_group,
+        bot_username=BOT_USERNAME,
+        send_reply=send_msg,
+        respond=answer,
+        engine=engine,
+        entities=message.get("entities"),
+        is_reply=is_reply,
+    )
 
     return {"ok": True}

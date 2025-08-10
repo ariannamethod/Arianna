@@ -1,8 +1,7 @@
 import os
-import re
 import asyncio
-import random
 import logging
+import random
 import tempfile
 import inspect
 from typing import Optional
@@ -11,21 +10,11 @@ import openai
 import httpx
 from pydub import AudioSegment
 from telethon import TelegramClient, events
-from telethon.tl.types import MessageEntityMention
 from telethon.sessions import StringSession
 
 from utils.arianna_engine import AriannaEngine
-from utils.vector_store import semantic_search, vectorize_all_files
-from utils.deepseek_search import DEEPSEEK_ENABLED
-from utils.bot_handlers import (
-    append_link_snippets,
-    parse_command,
-    dispatch_response,
-    DEEPSEEK_CMD,
-    SEARCH_CMD,
-    INDEX_CMD,
-    SKIP_SHORT_PROB,
-)
+from utils.bot_handlers import append_link_snippets, dispatch_response, SKIP_SHORT_PROB
+from utils.message_router import route_message
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -79,16 +68,7 @@ engine = AriannaEngine()
 openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 VOICE_ON_CMD = "/voiceon"
 VOICE_OFF_CMD = "/voiceoff"
-HELP_CMD = "/help"
 VOICE_ENABLED = {}
-HELP_TEXT = (
-    f"{SEARCH_CMD} <query> - semantic search documents\n"
-    f"{INDEX_CMD} - index documents\n"
-    f"{DEEPSEEK_CMD} <query> - ask DeepSeek\n"
-    f"{VOICE_ON_CMD} - enable voice responses\n"
-    f"{VOICE_OFF_CMD} - disable voice responses\n"
-    f"{HELP_CMD} - show this help message"
-)
 
 # --- optional behavior tuning ---
 GROUP_DELAY_MIN   = int(os.getenv("GROUP_DELAY_MIN", 120))   # 2 minutes
@@ -253,31 +233,8 @@ async def all_messages(event):
     if event.out:
         logger.info("Ignoring outgoing message")
         return
-    user_id = str(event.sender_id)
+    user_id = event.sender_id
     text = event.raw_text or ""
-
-    cmd, arg = parse_command(text)
-    if cmd == SEARCH_CMD:
-        if not arg:
-            logger.info("Search command missing argument")
-            return
-        chunks = await semantic_search(arg, engine.openai_key)
-        if not chunks:
-            await event.reply("No relevant documents found.")
-        else:
-            async def send(part: str) -> None:
-                await event.reply(part)
-            for ch in chunks:
-                await dispatch_response(send, ch)
-        return
-
-    if cmd == INDEX_CMD:
-        await event.reply("Indexing documents, please wait...")
-        async def sender(msg):
-            await event.reply(msg)
-        await vectorize_all_files(engine.openai_key, force=True, on_message=sender)
-        await event.reply("Indexing complete.")
-        return
 
     if text.strip().lower() == VOICE_ON_CMD:
         VOICE_ENABLED[event.chat_id] = True
@@ -287,76 +244,31 @@ async def all_messages(event):
         VOICE_ENABLED[event.chat_id] = False
         await event.reply("Voice responses disabled")
         return
-    if text.strip().lower() == HELP_CMD:
-        await event.reply(HELP_TEXT)
-        return
 
-    if cmd == DEEPSEEK_CMD:
-        if not DEEPSEEK_ENABLED:
-            await event.reply("DeepSeek integration is not configured")
-            return
-        if not arg:
-            logger.info("DeepSeek command missing argument")
-            return
-        resp = await engine.deepseek_reply(arg)
-        async def send(part: str) -> None:
-            await event.reply(part)
-        await dispatch_response(send, resp)
-        return
-
-    is_group = event.is_group
     is_reply = False
     if event.is_reply:
         replied = await event.get_reply_message()
         if replied and replied.sender_id == BOT_ID:
             is_reply = True
 
-    mentioned = False
-    if not is_group:
-        mentioned = True
-    else:
-        if re.search(r"\b(arianna|арианна)\b", text, re.I):
-            mentioned = True
-        elif BOT_USERNAME and f"@{BOT_USERNAME}".lower() in text.lower():
-            mentioned = True
-        if event.message.entities:
-            for ent in event.message.entities:
-                if isinstance(ent, MessageEntityMention):
-                    ent_text = text[ent.offset: ent.offset + ent.length]
-                    if ent_text[1:].lower() == BOT_USERNAME:
-                        mentioned = True
-                        break
+    async def send_msg(part: str) -> None:
+        await event.reply(part, parse_mode=PARSE_MODE)
 
-    if is_reply:
-        mentioned = True
+    async def answer(resp: str, thread_key: str, is_group: bool) -> None:
+        asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
 
-    if not (mentioned or is_reply):
-        logger.info("Message ignored: bot not mentioned and not a reply")
-        return
-
-    if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
-            logger.info("Skipping message: too short or no question")
-            return
-
-    thread_key = user_id if not is_group else str(event.chat_id)
-    prompt = await append_link_snippets(text)
-    logger.info("Message text: %s", text)
-    try:
-        resp = await engine.ask(thread_key, prompt, is_group=is_group)
-    except httpx.TimeoutException:
-        logger.error("OpenAI request timed out: %s", text, exc_info=True)
-        await event.reply("Request timed out. Please try again later.")
-        return
-    except TimeoutError:
-        logger.error("Timeout error while processing message: %s", text, exc_info=True)
-        await event.reply("Request timed out. Please try again later.")
-        return
-    except Exception:
-        logger.exception("Failed to process message: %s", text)
-        await event.reply("Internal error occurred. Please try again later.")
-        return
-    asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
+    await route_message(
+        text,
+        event.chat_id,
+        user_id,
+        is_group=event.is_group,
+        bot_username=BOT_USERNAME,
+        send_reply=send_msg,
+        respond=answer,
+        engine=engine,
+        entities=event.message.entities,
+        is_reply=is_reply,
+    )
 
 async def main():
     global BOT_USERNAME, BOT_ID
