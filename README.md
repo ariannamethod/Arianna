@@ -61,7 +61,7 @@ Several optional variables fine‑tune the bot's behavior:
 
 - `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 120–600).
 - `PRIVATE_DELAY_MIN`/`PRIVATE_DELAY_MAX` – range for private chats (default 30–180).
-- `SKIP_SHORT_PROB` – chance to ignore very short or non‑question messages in group chats (default 0.5). Skipped messages receive the hint "Уточните вопрос." Private chats use 0 by default.
+- `SKIP_SHORT_PROB` – chance to ignore very short or non‑question messages in group chats (default 0, meaning disabled). Skipped messages receive the hint "Уточните вопрос." Set `SKIP_SHORT_PROB` to a value between 0 and 1 (for example `0.5`) to re‑enable this behavior in groups. Private chats always use 0.
 - `FOLLOWUP_PROB` – probability of sending a follow‑up later (default 0.2).
 - `FOLLOWUP_DELAY_MIN`/`FOLLOWUP_DELAY_MAX` – delay range for follow‑ups in seconds (default 900–7200).
 
@@ -138,14 +138,14 @@ the model more context from the referenced site.
 
 Arianna purposely waits a little before answering. The delay range depends on
 the chat type and is configurable via the environment variables listed above.
-In group chats, short statements or messages without a question mark are ignored about half of the time (controlled by `SKIP_SHORT_PROB`). When skipped, the bot replies with "Уточните вопрос." Private chats process them by default. Occasionally she will send a brief follow‑up message referencing the earlier conversation.
+In group chats, short statements or messages without a question mark can be skipped if `SKIP_SHORT_PROB` is set above 0. When skipping is enabled, the bot replies with "Уточните вопрос." Private chats process them by default. Occasionally she will send a brief follow‑up message referencing the earlier conversation.
 
 ### Why the bot might not respond
 
 The bot intentionally filters some messages:
 
 - In group chats she replies only when mentioned or when you answer one of her messages.
-- Very short texts or those without a question mark are skipped with probability controlled by `SKIP_SHORT_PROB` (default `0.5` in groups, `0` in private chats). When this happens, the bot replies with "Уточните вопрос." Set `SKIP_SHORT_PROB=0` to disable this in groups as well.
+- Very short texts or those without a question mark can be skipped with probability controlled by `SKIP_SHORT_PROB` (disabled by default). When this happens, the bot replies with "Уточните вопрос." Set `SKIP_SHORT_PROB` to a value greater than 0 (for example `0.5`) to enable this in groups; private chats always use 0.
 - Voice messages that cannot be transcribed are ignored.
 
 ## Deployment

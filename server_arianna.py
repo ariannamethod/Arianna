@@ -273,12 +273,15 @@ async def voice_messages(event):
         logger.info("Skipping voice message: transcription failed")
         return
     text = await append_link_snippets(text)
-    if len(text.split()) < 4 or '?' not in text:
-        skip_prob = SKIP_SHORT_PROB if is_group else 0.0
-        if random.random() < skip_prob:
-            logger.info("Skipping voice message: too short or no question")
-            await event.reply("Уточните вопрос.")
-            return
+    if (
+        is_group
+        and SKIP_SHORT_PROB > 0
+        and (len(text.split()) < 4 or '?' not in text)
+        and random.random() < SKIP_SHORT_PROB
+    ):
+        logger.info("Skipping voice message: too short or no question")
+        await event.reply("Уточните вопрос.")
+        return
     logger.info("Voice message text: %s", text)
     try:
         resp = await engine.ask(thread_key, text, is_group=is_group)
@@ -382,12 +385,15 @@ async def all_messages(event):
         logger.info("Message ignored: bot not mentioned and not a reply")
         return
 
-    if len(text.split()) < 4 or '?' not in text:
-        skip_prob = SKIP_SHORT_PROB if is_group else 0.0
-        if random.random() < skip_prob:
-            logger.info("Skipping message: too short or no question")
-            await event.reply("Уточните вопрос.")
-            return
+    if (
+        is_group
+        and SKIP_SHORT_PROB > 0
+        and (len(text.split()) < 4 or '?' not in text)
+        and random.random() < SKIP_SHORT_PROB
+    ):
+        logger.info("Skipping message: too short or no question")
+        await event.reply("Уточните вопрос.")
+        return
 
     thread_key = user_id if not is_group else str(event.chat_id)
     prompt = await append_link_snippets(text)
