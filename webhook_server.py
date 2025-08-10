@@ -64,6 +64,16 @@ async def send_message(chat_id: int, text: str) -> None:
             timeout=30,
         )
 
+
+async def answer_inline_query(query_id: str, results: list) -> None:
+    payload = {"inline_query_id": query_id, "results": results}
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/answerInlineQuery",
+            json=payload,
+            timeout=30,
+        )
+
 @app.on_event("startup")
 async def startup() -> None:
     global BOT_USERNAME, BOT_ID
@@ -78,6 +88,10 @@ async def startup() -> None:
                 f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
                 json={"url": webhook_url},
             )
+        await client.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/setMyCommands",
+            json={"commands": [{"command": "ask", "description": "Ask Arianna inline"}]},
+        )
     try:
         await engine.setup_assistant()
     except RuntimeError:
@@ -97,6 +111,29 @@ async def root() -> dict:
 @app.post("/webhook")
 async def telegram_webhook(request: Request) -> dict:
     update = await request.json()
+    inline = update.get("inline_query")
+    if inline:
+        query_id = inline["id"]
+        text = inline.get("query", "")
+        if not text:
+            await answer_inline_query(query_id, [])
+            return {"ok": True}
+        prompt = await append_link_snippets(text)
+        try:
+            resp = await engine.ask(str(inline["from"]["id"]), prompt, is_group=False)
+        except httpx.TimeoutException:
+            await answer_inline_query(query_id, [])
+            return {"ok": True}
+        result = {
+            "type": "article",
+            "id": "0",
+            "title": "Arianna",
+            "input_message_content": {"message_text": resp},
+        }
+        if PARSE_MODE:
+            result["input_message_content"]["parse_mode"] = PARSE_MODE
+        await answer_inline_query(query_id, [result])
+        return {"ok": True}
     message = update.get("message") or update.get("edited_message")
     if not message:
         return {"ok": True}

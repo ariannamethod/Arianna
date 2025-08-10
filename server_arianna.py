@@ -11,7 +11,7 @@ import openai
 import httpx
 from pydub import AudioSegment
 from telethon import TelegramClient, events
-from telethon.tl.types import MessageEntityMention
+from telethon.tl.types import MessageEntityMention, BotCommand
 from telethon.sessions import StringSession
 
 from utils.arianna_engine import AriannaEngine
@@ -358,6 +358,28 @@ async def all_messages(event):
         return
     asyncio.create_task(send_delayed_response(event, resp, is_group, thread_key))
 
+
+@client.on(events.InlineQuery)
+async def inline_query(event):
+    query = event.text or ""
+    if not query:
+        await event.answer([], cache_time=0)
+        return
+    thread_key = f"inline:{event.sender_id}"
+    prompt = await append_link_snippets(query)
+    try:
+        resp = await engine.ask(thread_key, prompt, is_group=False)
+    except httpx.TimeoutException:
+        await event.answer([], cache_time=0)
+        return
+    result = event.builder.article(
+        title="Arianna",
+        description=resp[:50],
+        text=resp,
+        parse_mode=PARSE_MODE,
+    )
+    await event.answer([result], cache_time=0)
+
 async def main():
     global BOT_USERNAME, BOT_ID
     if BOT_TOKEN:
@@ -369,6 +391,7 @@ async def main():
     me = await client.get_me()
     BOT_USERNAME = (me.username or "").lower()
     BOT_ID = me.id
+    await client.set_bot_commands([BotCommand(command="ask", description="Ask Arianna inline")])
     try:
         await engine.setup_assistant()
     except RuntimeError:
