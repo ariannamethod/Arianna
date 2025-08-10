@@ -24,7 +24,6 @@ from utils.bot_handlers import (
     DEEPSEEK_CMD,
     SEARCH_CMD,
     INDEX_CMD,
-    SKIP_SHORT_PROB,
 )
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -228,9 +227,9 @@ async def voice_messages(event):
         return
     text = await append_link_snippets(text)
     if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
-            logger.info("Skipping voice message: too short or no question")
-            return
+        await event.reply("Please clarify your question.")
+        logger.info("Requesting clarification for voice message: too short or no question")
+        return
     logger.info("Voice message text: %s", text)
     try:
         resp = await engine.ask(thread_key, text, is_group=is_group)
@@ -335,9 +334,9 @@ async def all_messages(event):
         return
 
     if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
-            logger.info("Skipping message: too short or no question")
-            return
+        await event.reply("Please clarify your question.")
+        logger.info("Requesting clarification: message too short or no question")
+        return
 
     thread_key = user_id if not is_group else str(event.chat_id)
     prompt = await append_link_snippets(text)
