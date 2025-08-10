@@ -82,7 +82,13 @@ def create_telegram_client(
 
 THREAD_TTL_DAYS = int(os.getenv("THREAD_TTL_DAYS", "30"))
 cleanup_old_threads(THREAD_TTL_DAYS)
-client = create_telegram_client(phone=PHONE, bot_token=BOT_TOKEN, session_string=SESSION_STRING)
+# Создаем клиент только с session_string, если она есть
+if SESSION_STRING:
+    client = create_telegram_client(session_string=SESSION_STRING)
+elif BOT_TOKEN:
+    client = create_telegram_client(bot_token=BOT_TOKEN)
+else:
+    client = create_telegram_client(phone=PHONE)
 engine = AriannaEngine()
 openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 VOICE_ON_CMD = "/voiceon"
@@ -442,12 +448,8 @@ async def callback_query_handler(event):
 
 async def main():
     global BOT_USERNAME, BOT_ID
-    if BOT_TOKEN:
-        await client.start(bot_token=BOT_TOKEN)
-    elif SESSION_STRING:
-        await client.start()
-    else:
-        await client.start(phone=PHONE)
+    # Запускаем клиент без параметров, т.к. они уже переданы при создании
+    await client.start()
     me = await client.get_me()
     if BOT_TOKEN or getattr(me, "bot", False):
         await client.set_bot_commands(
