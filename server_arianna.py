@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import random
 import logging
+import socket
 import tempfile
 import inspect
 from typing import Optional
@@ -82,8 +83,7 @@ def create_telegram_client(
 
 THREAD_TTL_DAYS = int(os.getenv("THREAD_TTL_DAYS", "30"))
 cleanup_old_threads(THREAD_TTL_DAYS)
-# Используем только строковую сессию для авторизации
-client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
+client = create_telegram_client(phone=PHONE, bot_token=BOT_TOKEN, session_string=SESSION_STRING)
 engine = AriannaEngine()
 openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 VOICE_ON_CMD = "/voiceon"
@@ -443,13 +443,41 @@ async def callback_query_handler(event):
 
 async def main():
     global BOT_USERNAME, BOT_ID
-    # Простой запуск клиента с сессией
+    
+    # Диагностика сети перед подключением
     try:
-        await client.start()
-        logger.info("Успешное подключение к Telegram")
+        logger.info(f"Проверка подключения к api.telegram.org...")
+        ip_address = socket.gethostbyname("api.telegram.org")
+        logger.info(f"IP адрес api.telegram.org: {ip_address}")
+        
+        # Проверка подключения к конкретному IP и порту
+        test_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        test_socket.settimeout(5)
+        result = test_socket.connect_ex(("149.154.167.91", 443))
+        test_socket.close()
+        
+        if result == 0:
+            logger.info("Подключение к 149.154.167.91:443 успешно")
+        else:
+            logger.warning(f"Не удалось подключиться к 149.154.167.91:443, код ошибки: {result}")
     except Exception as e:
-        logger.error(f"Ошибка подключения к Telegram: {e}")
-        raise SystemExit(f"Не удалось подключиться к Telegram: {e}")
+        logger.error(f"Ошибка при проверке сети: {e}")
+    
+    # Пробуем подключиться
+    try:
+        if BOT_TOKEN:
+            logger.info("Подключение через BOT_TOKEN...")
+            await client.start(bot_token=BOT_TOKEN)
+        elif SESSION_STRING:
+            logger.info("Подключение через SESSION_STRING...")
+            await client.start()
+        else:
+            logger.info("Подключение через PHONE...")
+            await client.start(phone=PHONE)
+        logger.info("Подключение успешно!")
+    except Exception as e:
+        logger.error(f"Ошибка при подключении: {e}", exc_info=True)
+        raise SystemExit(f"Не удалось подключиться: {e}")
     me = await client.get_me()
     if BOT_TOKEN or getattr(me, "bot", False):
         await client.set_bot_commands(
@@ -471,8 +499,7 @@ async def main():
         logger.exception("Assistant initialization failed")
         await engine.aclose()
         raise SystemExit(1)
-    logger.info("🚀 Arianna client started with session_string")
-    logger.info(f"API_ID: {API_ID}, SESSION_STRING length: {len(SESSION_STRING)}")
+    logger.info("🚀 Arianna client started")
     try:
         await client.run_until_disconnected()
     finally:
