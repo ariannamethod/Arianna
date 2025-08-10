@@ -59,8 +59,9 @@ python -m dotenv run -- python server_arianna.py
 Important variables include `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_PHONE`, `TELEGRAM_SESSION_STRING`, and `OPENAI_API_KEY`. Set `DEEPSEEK_API_KEY` to enable the optional DeepSeek integration; the `/ds` command will be disabled if it is not provided. Set `TELEGRAM_BOT_TOKEN` (or legacy `TELEGRAM_TOKEN`) to run the client in bot mode. Pinecone settings (`PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_ENV`) are also required if you use semantic search.
 Several optional variables fine‑tune the bot's behavior:
 
-- `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 120–600).
-- `PRIVATE_DELAY_MIN`/`PRIVATE_DELAY_MAX` – range for private chats (default 30–180).
+- `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 120–600). You can also override these with `--group-delay-min`/`--group-delay-max` command‑line options.
+- `PRIVATE_DELAY_MIN`/`PRIVATE_DELAY_MAX` – range for private chats (default 30–180). Command‑line flags `--private-delay-min`/`--private-delay-max` override these values.
+- `DISABLE_DELAY` – set to `1` to disable reply delays entirely. The same effect can be achieved by starting the bot with `--no-delay`.
 - `SKIP_SHORT_PROB` – chance to ignore very short or non‑question messages in group chats (default 0.5). Skipped messages receive the hint "Уточните вопрос." Private chats use 0 by default.
 - `FOLLOWUP_PROB` – probability of sending a follow‑up later (default 0.2).
 - `FOLLOWUP_DELAY_MIN`/`FOLLOWUP_DELAY_MAX` – delay range for follow‑ups in seconds (default 900–7200).
@@ -72,6 +73,9 @@ Run the Telegram client with:
 ```bash
 python server_arianna.py
 ```
+
+Command-line flags like `--no-delay` or `--group-delay-min 10` can override the
+default delay behavior without modifying environment variables.
 
 If `TELEGRAM_BOT_TOKEN` (or `TELEGRAM_TOKEN`) is set the script logs in as a bot and no phone number is required. Otherwise, on the first start Telethon will ask for your phone number and a verification code. The resulting credentials are stored in `arianna.session`. Delete this file if you need to re-authenticate later.
 
@@ -137,8 +141,13 @@ the model more context from the referenced site.
 ### Delayed replies and follow-ups
 
 Arianna purposely waits a little before answering. The delay range depends on
-the chat type and is configurable via the environment variables listed above.
-In group chats, short statements or messages without a question mark are ignored about half of the time (controlled by `SKIP_SHORT_PROB`). When skipped, the bot replies with "Уточните вопрос." Private chats process them by default. Occasionally she will send a brief follow‑up message referencing the earlier conversation.
+the chat type and is configurable via the environment variables or command-line
+options listed above. Set `DISABLE_DELAY=1` or start the bot with `--no-delay`
+to respond immediately (useful for testing). In group chats, short statements or
+messages without a question mark are ignored about half of the time
+(controlled by `SKIP_SHORT_PROB`). When skipped, the bot replies with
+"Уточните вопрос." Private chats process them by default. Occasionally she will
+send a brief follow‑up message referencing the earlier conversation.
 
 ### Why the bot might not respond
 
