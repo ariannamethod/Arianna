@@ -221,7 +221,7 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
 async def voice_messages(event):
     is_group = event.is_group
     user_id = str(event.sender_id)
-    thread_key = f"{event.chat_id}:{event.sender_id}" if is_group else user_id
+    thread_key = str(event.chat_id) if is_group else user_id
     with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as tmp:
         await event.download_media(tmp.name)
     text = await transcribe_voice(tmp.name)
