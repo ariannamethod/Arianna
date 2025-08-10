@@ -34,3 +34,24 @@ def test_log_event_logs_exception_on_failure(monkeypatch, caplog, tmp_path):
         for record in caplog.records
     )
 
+
+def test_log_event_rotates_on_size(tmp_path, monkeypatch):
+    log_path = tmp_path / "journal.json"
+    monkeypatch.setattr(journal, "LOG_PATH", str(log_path))
+    monkeypatch.setattr(journal, "MAX_LOG_SIZE", 10)
+
+    journal.log_event({"n": 1})
+    journal.log_event({"n": 2})
+
+    files = list(tmp_path.glob("journal.json*"))
+    assert len(files) == 2
+
+    rotated = [f for f in files if f.name != "journal.json"][0]
+    with open(rotated, "r", encoding="utf-8") as f:
+        first = [json.loads(line) for line in f if line.strip()][0]
+    with open(log_path, "r", encoding="utf-8") as f:
+        second = [json.loads(line) for line in f if line.strip()][0]
+
+    assert first["n"] == 1
+    assert second["n"] == 2
+
