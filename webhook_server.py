@@ -149,7 +149,7 @@ async def telegram_webhook(request: Request) -> dict:
     if not text:
         return {"ok": True}
 
-    cmd, arg = parse_command(text)
+    cmd, arg = parse_command(text, BOT_USERNAME)
     if cmd == SEARCH_CMD:
         if arg:
             chunks = await semantic_search(arg, engine.openai_key)
