@@ -231,8 +231,10 @@ async def voice_messages(event):
         return
     text = await append_link_snippets(text)
     if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
+        skip_prob = SKIP_SHORT_PROB if is_group else 0.0
+        if random.random() < skip_prob:
             logger.info("Skipping voice message: too short or no question")
+            await event.reply("Уточните вопрос.")
             return
     logger.info("Voice message text: %s", text)
     try:
@@ -338,8 +340,10 @@ async def all_messages(event):
         return
 
     if len(text.split()) < 4 or '?' not in text:
-        if random.random() < SKIP_SHORT_PROB:
+        skip_prob = SKIP_SHORT_PROB if is_group else 0.0
+        if random.random() < skip_prob:
             logger.info("Skipping message: too short or no question")
+            await event.reply("Уточните вопрос.")
             return
 
     thread_key = user_id if not is_group else str(event.chat_id)
