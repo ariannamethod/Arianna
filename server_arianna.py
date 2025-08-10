@@ -83,7 +83,16 @@ def create_telegram_client(
 
 THREAD_TTL_DAYS = int(os.getenv("THREAD_TTL_DAYS", "30"))
 cleanup_old_threads(THREAD_TTL_DAYS)
-client = create_telegram_client(phone=PHONE, bot_token=BOT_TOKEN, session_string=SESSION_STRING)
+# Приоритет SESSION_STRING над BOT_TOKEN
+if SESSION_STRING:
+    client = create_telegram_client(session_string=SESSION_STRING)
+    logger.info("Клиент создан с SESSION_STRING")
+elif BOT_TOKEN:
+    client = create_telegram_client(bot_token=BOT_TOKEN)
+    logger.info("Клиент создан с BOT_TOKEN")
+else:
+    client = create_telegram_client(phone=PHONE)
+    logger.info("Клиент создан с PHONE")
 engine = AriannaEngine()
 openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 VOICE_ON_CMD = "/voiceon"
@@ -465,12 +474,12 @@ async def main():
     
     # Пробуем подключиться
     try:
-        if BOT_TOKEN:
-            logger.info("Подключение через BOT_TOKEN...")
-            await client.start(bot_token=BOT_TOKEN)
-        elif SESSION_STRING:
+        if SESSION_STRING:
             logger.info("Подключение через SESSION_STRING...")
             await client.start()
+        elif BOT_TOKEN:
+            logger.info("Подключение через BOT_TOKEN...")
+            await client.start(bot_token=BOT_TOKEN)
         else:
             logger.info("Подключение через PHONE...")
             await client.start(phone=PHONE)
