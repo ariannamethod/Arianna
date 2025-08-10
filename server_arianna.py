@@ -10,7 +10,7 @@ from typing import Optional
 import openai
 import httpx
 from pydub import AudioSegment
-from telethon import TelegramClient, events
+from telethon import TelegramClient, events, Button
 from telethon.tl.types import MessageEntityMention
 from telethon.sessions import StringSession
 
@@ -81,6 +81,7 @@ VOICE_ON_CMD = "/voiceon"
 VOICE_OFF_CMD = "/voiceoff"
 HELP_CMD = "/help"
 VOICE_ENABLED = {}
+HELP_URL = os.getenv("HELP_URL", "https://example.com/help")
 HELP_TEXT = (
     f"{SEARCH_CMD} <query> - semantic search documents\n"
     f"{INDEX_CMD} - index documents\n"
@@ -178,16 +179,36 @@ async def send_delayed_response(event, resp: str, is_group: bool, thread_key: st
     """Send the reply after a randomized delay and schedule optional follow-up."""
     await client.send_chat_action(event.chat_id, 'typing')
     await asyncio.sleep(_delay(is_group))
+    buttons = [
+        Button.inline("🗣 Voice", b"toggle_voice"),
+        Button.url("ℹ️ Help", HELP_URL),
+    ]
     if VOICE_ENABLED.get(event.chat_id):
         voice_path = await synthesize_voice(resp)
         if os.path.exists(voice_path):
-            await client.send_file(event.chat_id, voice_path, caption=resp[:1024], parse_mode=PARSE_MODE)
+            await client.send_file(
+                event.chat_id,
+                voice_path,
+                caption=resp[:1024],
+                parse_mode=PARSE_MODE,
+                buttons=buttons,
+            )
             os.remove(voice_path)
         else:
-            await client.send_message(event.chat_id, voice_path, parse_mode=PARSE_MODE)
+            await client.send_message(
+                event.chat_id,
+                voice_path,
+                parse_mode=PARSE_MODE,
+                buttons=buttons,
+            )
     else:
         async def send(chunk: str) -> None:
-            await client.send_message(event.chat_id, chunk, parse_mode=PARSE_MODE)
+            await client.send_message(
+                event.chat_id,
+                chunk,
+                parse_mode=PARSE_MODE,
+                buttons=buttons,
+            )
         await dispatch_response(send, resp)
     if random.random() < FOLLOWUP_PROB:
         asyncio.create_task(schedule_followup(event.chat_id, thread_key, is_group))
@@ -213,6 +234,17 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
         async def send(chunk: str) -> None:
             await client.send_message(chat_id, chunk, parse_mode=PARSE_MODE)
         await dispatch_response(send, resp)
+
+
+@client.on(events.CallbackQuery)
+async def callback_buttons(event):
+    if event.data == b"toggle_voice":
+        chat_id = event.chat_id
+        VOICE_ENABLED[chat_id] = not VOICE_ENABLED.get(chat_id, False)
+        state = "enabled" if VOICE_ENABLED[chat_id] else "disabled"
+        await event.answer(f"Voice responses {state}")
+    elif event.data == b"open_webapp":
+        await event.answer(url=HELP_URL)
 
 @client.on(events.NewMessage(func=lambda e: bool(e.message.voice)))
 async def voice_messages(event):
