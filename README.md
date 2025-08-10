@@ -59,8 +59,8 @@ python -m dotenv run -- python server_arianna.py
 Important variables include `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_PHONE`, `TELEGRAM_SESSION_STRING`, and `OPENAI_API_KEY`. Set `DEEPSEEK_API_KEY` to enable the optional DeepSeek integration; the `/ds` command will be disabled if it is not provided. Set `TELEGRAM_BOT_TOKEN` (or legacy `TELEGRAM_TOKEN`) to run the client in bot mode. Pinecone settings (`PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_ENV`) are also required if you use semantic search.
 Several optional variables fine‑tune the bot's behavior:
 
-- `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 120–600).
-- `PRIVATE_DELAY_MIN`/`PRIVATE_DELAY_MAX` – range for private chats (default 30–180).
+- `GROUP_DELAY_MIN`/`GROUP_DELAY_MAX` – range in seconds to wait before replying in groups (default 0–5, override with environment variables).
+- `PRIVATE_DELAY_MIN`/`PRIVATE_DELAY_MAX` – range for private chats (default 0–5, override with environment variables).
 - `SKIP_SHORT_PROB` – chance to ignore very short or non‑question messages in group chats (default 0.5). Skipped messages receive the hint "Уточните вопрос." Private chats use 0 by default.
 - `FOLLOWUP_PROB` – probability of sending a follow‑up later (default 0.2).
 - `FOLLOWUP_DELAY_MIN`/`FOLLOWUP_DELAY_MAX` – delay range for follow‑ups in seconds (default 900–7200).

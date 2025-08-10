@@ -105,11 +105,11 @@ def default_buttons():
     ]
 
 # --- optional behavior tuning ---
-GROUP_DELAY_MIN   = int(os.getenv("GROUP_DELAY_MIN", 120))   # 2 minutes
-GROUP_DELAY_MAX   = int(os.getenv("GROUP_DELAY_MAX", 600))   # 10 minutes
-PRIVATE_DELAY_MIN = int(os.getenv("PRIVATE_DELAY_MIN", 30))  # 30 seconds
-PRIVATE_DELAY_MAX = int(os.getenv("PRIVATE_DELAY_MAX", 180)) # 3 minutes
-FOLLOWUP_PROB     = float(os.getenv("FOLLOWUP_PROB", 0.2))
+GROUP_DELAY_MIN = float(os.getenv("GROUP_DELAY_MIN", 0))   # default 0 seconds
+GROUP_DELAY_MAX = float(os.getenv("GROUP_DELAY_MAX", 5))   # default 5 seconds
+PRIVATE_DELAY_MIN = float(os.getenv("PRIVATE_DELAY_MIN", 0))  # default 0 seconds
+PRIVATE_DELAY_MAX = float(os.getenv("PRIVATE_DELAY_MAX", 5))  # default 5 seconds
+FOLLOWUP_PROB = float(os.getenv("FOLLOWUP_PROB", 0.2))
 FOLLOWUP_DELAY_MIN = int(os.getenv("FOLLOWUP_DELAY_MIN", 900))   # 15 minutes
 FOLLOWUP_DELAY_MAX = int(os.getenv("FOLLOWUP_DELAY_MAX", 7200))  # 2 hours
 
