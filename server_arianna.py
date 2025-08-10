@@ -80,7 +80,7 @@ openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
 VOICE_ON_CMD = "/voiceon"
 VOICE_OFF_CMD = "/voiceoff"
 HELP_CMD = "/help"
-VOICE_ENABLED = {}
+voice_enabled_chats: set[int] = set()
 HELP_TEXT = (
     f"{SEARCH_CMD} <query> - semantic search documents\n"
     f"{INDEX_CMD} - index documents\n"
@@ -178,7 +178,7 @@ async def send_delayed_response(event, resp: str, is_group: bool, thread_key: st
     """Send the reply after a randomized delay and schedule optional follow-up."""
     await client.send_chat_action(event.chat_id, 'typing')
     await asyncio.sleep(_delay(is_group))
-    if VOICE_ENABLED.get(event.chat_id):
+    if event.chat_id in voice_enabled_chats:
         voice_path = await synthesize_voice(resp)
         if os.path.exists(voice_path):
             await client.send_file(event.chat_id, voice_path, caption=resp[:1024], parse_mode=PARSE_MODE)
@@ -202,7 +202,7 @@ async def schedule_followup(chat_id: int, thread_key: str, is_group: bool):
         logger.error("Follow-up request timed out", exc_info=True)
         await client.send_message(chat_id, "Request timed out. Please try again later.", parse_mode=PARSE_MODE)
         return
-    if VOICE_ENABLED.get(chat_id):
+    if chat_id in voice_enabled_chats:
         voice_path = await synthesize_voice(resp)
         if os.path.exists(voice_path):
             await client.send_file(chat_id, voice_path, caption=resp[:1024], parse_mode=PARSE_MODE)
@@ -280,11 +280,11 @@ async def all_messages(event):
         return
 
     if text.strip().lower() == VOICE_ON_CMD:
-        VOICE_ENABLED[event.chat_id] = True
+        voice_enabled_chats.add(event.chat_id)
         await event.reply("Voice responses enabled")
         return
     if text.strip().lower() == VOICE_OFF_CMD:
-        VOICE_ENABLED[event.chat_id] = False
+        voice_enabled_chats.discard(event.chat_id)
         await event.reply("Voice responses disabled")
         return
     if text.strip().lower() == HELP_CMD:
