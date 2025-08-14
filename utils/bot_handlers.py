@@ -10,6 +10,21 @@ DEEPSEEK_CMD = "/ds"
 SEARCH_CMD = "/search"
 INDEX_CMD = "/index"
 VOICE_ON_CMD = "/voiceon"
+VOICE_OFF_CMD = "/voiceoff"
+HELP_CMD = "/help"
+MENU_CMD = "/menu"
+
+COMMAND_ALIASES = {
+    SEARCH_CMD: ("/search", "/s"),
+    INDEX_CMD: ("/index", "/i"),
+    DEEPSEEK_CMD: ("/ds",),
+    VOICE_ON_CMD: ("/voiceon", "/vo"),
+    VOICE_OFF_CMD: ("/voiceoff", "/vf"),
+    HELP_CMD: ("/help", "/h"),
+    MENU_CMD: ("/menu", "/m"),
+}
+
+SHORT_COMMANDS = {key: aliases[-1] for key, aliases in COMMAND_ALIASES.items()}
 
 URL_REGEX = re.compile(r"https://\S+")
 URL_FETCH_TIMEOUT = int(os.getenv("URL_FETCH_TIMEOUT", 10))
@@ -65,10 +80,11 @@ def parse_command(
     stripped = first + (" " + rest[0] if rest else "")
     lowered = stripped.lower()
 
-    for cmd in (SEARCH_CMD, INDEX_CMD, DEEPSEEK_CMD, VOICE_ON_CMD):
-        if lowered.startswith(cmd):
-            arg = stripped[len(cmd):].lstrip()
-            return cmd, arg
+    for canonical, aliases in COMMAND_ALIASES.items():
+        for cmd in aliases:
+            if lowered.startswith(cmd):
+                arg = stripped[len(cmd):].lstrip()
+                return canonical, arg
     return None, stripped
 
 
