@@ -31,6 +31,11 @@ from utils.bot_handlers import (
     DEEPSEEK_CMD,
     SEARCH_CMD,
     INDEX_CMD,
+    VOICE_ON_CMD,
+    VOICE_OFF_CMD,
+    HELP_CMD,
+    MENU_CMD,
+    SHORT_COMMANDS,
     SKIP_SHORT_PROB,
 )
 
@@ -95,17 +100,15 @@ else:
     logger.info("Клиент создан с PHONE")
 engine = AriannaEngine()
 openai_client = openai.AsyncOpenAI(api_key=OPENAI_API_KEY)
-VOICE_ON_CMD = "/voiceon"
-VOICE_OFF_CMD = "/voiceoff"
-HELP_CMD = "/help"
 VOICE_ENABLED = {}
 HELP_TEXT = (
-    f"{SEARCH_CMD} <query> - semantic search documents\n"
-    f"{INDEX_CMD} - index documents\n"
-    f"{DEEPSEEK_CMD} <query> - ask DeepSeek\n"
-    f"{VOICE_ON_CMD} - enable voice responses\n"
-    f"{VOICE_OFF_CMD} - disable voice responses\n"
-    f"{HELP_CMD} - show this help message"
+    f"{SEARCH_CMD} ({SHORT_COMMANDS[SEARCH_CMD]}) <query> - semantic search documents\n"
+    f"{INDEX_CMD} ({SHORT_COMMANDS[INDEX_CMD]}) - index documents\n"
+    f"{DEEPSEEK_CMD} - ask DeepSeek\n"
+    f"{VOICE_ON_CMD} ({SHORT_COMMANDS[VOICE_ON_CMD]}) - enable voice responses\n"
+    f"{VOICE_OFF_CMD} ({SHORT_COMMANDS[VOICE_OFF_CMD]}) - disable voice responses\n"
+    f"{HELP_CMD} ({SHORT_COMMANDS[HELP_CMD]}) - show this help message\n"
+    f"{MENU_CMD} ({SHORT_COMMANDS[MENU_CMD]}) - show command menu"
 )
 
 def default_buttons():
@@ -113,6 +116,22 @@ def default_buttons():
     return [
         [Button.inline("Voice On", b"voice_on"), Button.inline("Voice Off", b"voice_off")],
         [Button.inline("Search docs", b"search_docs")],
+    ]
+
+
+def menu_buttons():
+    """Reply keyboard with short command names."""
+    return [
+        [
+            Button.text(SHORT_COMMANDS[SEARCH_CMD], resize=True),
+            Button.text(SHORT_COMMANDS[INDEX_CMD], resize=True),
+            Button.text(SHORT_COMMANDS[DEEPSEEK_CMD], resize=True),
+        ],
+        [
+            Button.text(SHORT_COMMANDS[VOICE_ON_CMD], resize=True),
+            Button.text(SHORT_COMMANDS[VOICE_OFF_CMD], resize=True),
+            Button.text(SHORT_COMMANDS[HELP_CMD], resize=True),
+        ],
     ]
 
 # --- optional behavior tuning ---
@@ -332,6 +351,10 @@ async def all_messages(event):
     text = event.raw_text or ""
 
     cmd, arg = parse_command(text, BOT_USERNAME)
+    if cmd == MENU_CMD:
+        await event.reply("Select command:", buttons=menu_buttons())
+        return
+
     if cmd == SEARCH_CMD:
         if not arg:
             logger.info("Search command missing argument")
@@ -354,15 +377,15 @@ async def all_messages(event):
         await event.reply("Indexing complete.")
         return
 
-    if text.strip().lower() == VOICE_ON_CMD:
+    if cmd == VOICE_ON_CMD:
         VOICE_ENABLED[event.chat_id] = True
         await event.reply("Voice responses enabled", buttons=default_buttons())
         return
-    if text.strip().lower() == VOICE_OFF_CMD:
+    if cmd == VOICE_OFF_CMD:
         VOICE_ENABLED[event.chat_id] = False
         await event.reply("Voice responses disabled", buttons=default_buttons())
         return
-    if text.strip().lower() == HELP_CMD:
+    if cmd == HELP_CMD:
         await event.reply(HELP_TEXT, buttons=default_buttons())
         return
 
@@ -491,12 +514,13 @@ async def main():
     if BOT_TOKEN or getattr(me, "bot", False):
         await client.set_bot_commands(
             [
-                BotCommand(SEARCH_CMD.lstrip("/"), "Semantic search documents"),
-                BotCommand(INDEX_CMD.lstrip("/"), "Index documents"),
-                BotCommand(DEEPSEEK_CMD.lstrip("/"), "Ask DeepSeek"),
-                BotCommand(VOICE_ON_CMD.lstrip("/"), "Enable voice responses"),
-                BotCommand(VOICE_OFF_CMD.lstrip("/"), "Disable voice responses"),
-                BotCommand(HELP_CMD.lstrip("/"), "Show help"),
+                BotCommand(SHORT_COMMANDS[SEARCH_CMD].lstrip("/"), "Semantic search documents"),
+                BotCommand(SHORT_COMMANDS[INDEX_CMD].lstrip("/"), "Index documents"),
+                BotCommand(SHORT_COMMANDS[DEEPSEEK_CMD].lstrip("/"), "Ask DeepSeek"),
+                BotCommand(SHORT_COMMANDS[VOICE_ON_CMD].lstrip("/"), "Enable voice responses"),
+                BotCommand(SHORT_COMMANDS[VOICE_OFF_CMD].lstrip("/"), "Disable voice responses"),
+                BotCommand(SHORT_COMMANDS[HELP_CMD].lstrip("/"), "Show help"),
+                BotCommand(SHORT_COMMANDS[MENU_CMD].lstrip("/"), "Show command menu"),
             ],
             scope=BotCommandScopeDefault(),
         )

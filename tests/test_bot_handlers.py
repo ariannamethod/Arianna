@@ -26,9 +26,21 @@ def test_parse_command():
     assert cmd == bh.SEARCH_CMD
     assert arg == "kittens"
 
+    cmd, arg = bh.parse_command("/s puppies")
+    assert cmd == bh.SEARCH_CMD
+    assert arg == "puppies"
+
     cmd, arg = bh.parse_command("/DS data")
     assert cmd == bh.DEEPSEEK_CMD
     assert arg == "data"
+
+    cmd, arg = bh.parse_command("/vo")
+    assert cmd == bh.VOICE_ON_CMD
+    assert arg == ""
+
+    cmd, arg = bh.parse_command("/vf")
+    assert cmd == bh.VOICE_OFF_CMD
+    assert arg == ""
 
     cmd, arg = bh.parse_command("no command here")
     assert cmd is None
