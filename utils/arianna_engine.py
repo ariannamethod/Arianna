@@ -9,7 +9,13 @@ from collections import OrderedDict
 from utils.genesis_tool import genesis_tool_schema, handle_genesis_call
 from utils.deepseek_search import call_deepseek
 from utils.journal import log_event
-from utils.thread_store_sqlite import get_thread, set_thread, touch_thread
+from utils.thread_store_sqlite import (
+    get_thread,
+    set_thread,
+    touch_thread,
+    save_message,
+)
+from utils.vector_store import get_embedding
 
 
 ASSISTANT_ID_PATH = "data/assistant_id.json"
@@ -186,6 +192,12 @@ class AriannaEngine:
 
         # Добавляем пользовательский запрос
         try:
+            user_emb = await get_embedding(prompt, self.openai_key)
+        except Exception:
+            user_emb = None
+            self.logger.debug("Failed to embed user message", exc_info=True)
+
+        try:
             msg = await self.client.post(
                 f"https://api.openai.com/v1/threads/{tid}/messages",
                 json={"role": "user", "content": prompt, "metadata": {"is_group": str(is_group)}},
@@ -212,6 +224,8 @@ class AriannaEngine:
             except Exception as e2:
                 self.logger.error("Failed to post user message after recreating thread", exc_info=e2)
                 raise
+
+        save_message(tid, "user", prompt, user_emb)
 
         # Запускаем ассистента
         try:
@@ -279,6 +293,13 @@ class AriannaEngine:
             answer = await handle_genesis_call(msg["tool_calls"])
         else:
             answer = msg["content"][0]["text"]["value"]
+
+        try:
+            reply_emb = await get_embedding(answer, self.openai_key)
+        except Exception:
+            reply_emb = None
+            self.logger.debug("Failed to embed assistant message", exc_info=True)
+        save_message(tid, "assistant", answer, reply_emb)
 
         log_event({
             "thread_key": thread_key,
