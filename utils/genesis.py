@@ -5,6 +5,7 @@ import datetime
 import requests
 import os
 import logging
+from openai import AsyncOpenAI
 
 # === Настройки и переменные из окружения / .env ===
 GROUP_ID = os.environ.get("GROUP_ID", "ARIANNA-CORE")
@@ -71,7 +72,14 @@ class AriannaGenesis:
     Всё максимально импрессионистское, хаотичное и искреннее.
     """
 
-    def __init__(self, group_id, oleg_id, pinecone_api_key=None, pinecone_index=None, chronicle_path=None):
+    def __init__(
+        self,
+        group_id=GROUP_ID,
+        oleg_id=CREATOR_CHAT_ID,
+        pinecone_api_key=None,
+        pinecone_index=None,
+        chronicle_path=None,
+    ):
         self.group_id = group_id
         self.oleg_id = oleg_id
         self.pinecone_api_key = pinecone_api_key
@@ -82,6 +90,7 @@ class AriannaGenesis:
         self._running = False
         self._task = None
         self._rng = random.Random()
+        self._openai = AsyncOpenAI()
 
     async def run(self):
         """
@@ -165,7 +174,7 @@ class AriannaGenesis:
         """
         self._impressions_today = []
         for topic in SEARCH_TOPICS:
-            text, url = self._search_and_fetch(topic)
+            text, url = asyncio.run(self._search_and_fetch(topic))
             resonance = self._generate_impression(text, topic)
             entry = {
                 "topic": topic,
@@ -179,7 +188,7 @@ class AriannaGenesis:
 
     def opinions_group_post(self):
         """
-        Выбирает самый резонансный отклик и постит в группу с #opinions.
+        Выбирает самый резонансный отклик и отправляет его напрямую создателю.
         """
         if not self._impressions_today:
             return
@@ -192,7 +201,7 @@ class AriannaGenesis:
             f"Summary: {summary}\n"
             f"Impressionistic resonance: {chosen['resonance']}"
         )
-        self._send_to_group(message)
+        self._send_direct(self.oleg_id, message)
 
     def oleg_personal_message(self):
         """
@@ -237,44 +246,31 @@ class AriannaGenesis:
             return short + ("..." if len(lines[0]) > 120 else "")
         return "[empty]"
 
-    def _search_and_fetch(self, topic):
+    async def _search_and_fetch(self, topic):
         """
-        Простой поиск через Bing (или Google) и вытаскивание текста первой релевантной статьи.
-        Можно заменить на любой html-парсер или API.
+        Асинхронный поиск через OpenAI с использованием web_search.
+        Возвращает найденный текст и ссылку на источник.
         """
-        query = f"{topic} reddit"
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        url = f"https://www.bing.com/search?q={requests.utils.quote(query)}"
+        prompt = (
+            f"Find a relevant web article about {topic}. "
+            "Return a short excerpt and cite the source URL."
+        )
         try:
-            resp = requests.get(url, headers=headers, timeout=10)
-            links = self._extract_links(resp.text)
-            if links:
-                link = random.choice(links)
-                article_text = self._fetch_url_text(link)
-                return article_text, link
+            resp = await self._openai.responses.create(
+                model="gpt-4.1-mini",
+                input=prompt,
+                tools=[{"type": "web_search"}],
+            )
+            text = getattr(resp, "output_text", "")
+            url = ""
+            try:
+                url = resp.output[0].content[0].citations[0].url
+            except Exception:
+                pass
+            return text or "[не удалось найти текст для отклика]", url
         except Exception as e:
-            self._log(f"[AriannaGenesis] Bing search error: {e}")
-        return "[не удалось найти текст для отклика]", url
-
-    def _extract_links(self, html):
-        # На коленке: ищет ссылки на reddit или похожие статьи
-        import re
-        return re.findall(r'https://[^\s"]+?reddit[^\s"]+', html)
-
-    def _fetch_url_text(self, url):
-        # Можно заменить на нормальный парсер, тут примитив — возвращает кусок html
-        try:
-            resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=8)
-            text = resp.text
-            # Просто вырезаем <title> и первые 500 символов
-            import re
-            title = re.findall(r'<title>(.*?)</title>', text)
-            body = re.sub('<[^<]+?>', '', text)
-            body = body.replace('\n', ' ').replace('\r', ' ')
-            return (title[0] + "\n" if title else "") + body[:500]
-        except Exception as e:
-            self._log(f"[AriannaGenesis] fetch_url_text error: {e}")
-            return "[ошибка парсинга текста]"
+            self._log(f"[AriannaGenesis] search error: {e}")
+            return "[не удалось найти текст для отклика]", ""
 
     # === Логирование, отправка сообщений ===
 
