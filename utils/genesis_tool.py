@@ -38,7 +38,6 @@ async def handle_genesis_call(tool_calls):
 
     inst = AriannaGenesis(
         group_id=os.getenv("GROUP_ID"),
-        oleg_id=os.getenv("CREATOR_CHAT_ID"),
         pinecone_api_key=os.getenv("PINECONE_API_KEY"),
         pinecone_index=os.getenv("PINECONE_INDEX"),
         chronicle_path=os.getenv("CHRONICLE_PATH")
@@ -63,7 +62,7 @@ async def handle_genesis_call(tool_calls):
         text = await asyncio.to_thread(inst._generate_impression, "", "")
     elif mode == "opinion":
         await asyncio.to_thread(inst.opinions_group_post)
-        text = "Opinion posted to group."
+        text = "Opinion sent to creator."
     else:
         await asyncio.to_thread(inst.oleg_personal_message)
         text = "Personal message sent to Oleg."
