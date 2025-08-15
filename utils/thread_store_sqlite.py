@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def _init_db(path: str) -> None:
-    """Ensure the SQLite database and table exist."""
+    """Ensure the SQLite database and required tables exist."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with sqlite3.connect(path) as conn:
         conn.execute(
@@ -30,6 +30,31 @@ def _init_db(path: str) -> None:
             conn.execute(
                 "ALTER TABLE threads ADD COLUMN last_used INTEGER NOT NULL DEFAULT (strftime('%s','now'))"
             )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                thread_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                embedding TEXT,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snapshot_date TEXT NOT NULL,
+                summary TEXT,
+                embedding TEXT,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
         conn.commit()
 
 def load_threads(db_path: str = THREADS_DB_PATH) -> dict:
@@ -139,6 +164,175 @@ def touch_thread(user_id: str, db_path: str = THREADS_DB_PATH) -> None:
             conn.commit()
     except Exception:
         logger.exception("Failed to update last_used for %s", user_id)
+
+
+def save_message(
+    thread_id: str,
+    role: str,
+    content: str,
+    embedding: Optional[list[float]] = None,
+    created_at: Optional[int] = None,
+    db_path: str = THREADS_DB_PATH,
+) -> None:
+    """Store a single message in the messages table."""
+    try:
+        _init_db(db_path)
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO messages (thread_id, role, content, embedding, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    thread_id,
+                    role,
+                    content,
+                    json.dumps(embedding) if embedding is not None else None,
+                    created_at or int(time.time()),
+                ),
+            )
+            conn.commit()
+    except Exception:
+        logger.exception("Failed to save message for thread %s", thread_id)
+
+
+def get_messages_by_date(date_str: str, db_path: str = THREADS_DB_PATH) -> list[dict]:
+    """Return messages created on the given YYYY-MM-DD date."""
+    try:
+        _init_db(db_path)
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.execute(
+                """
+                SELECT thread_id, role, content, embedding, created_at
+                FROM messages
+                WHERE date(created_at, 'unixepoch') = ?
+                ORDER BY created_at
+                """,
+                (date_str,),
+            )
+            rows = cursor.fetchall()
+        messages = []
+        for tid, role, content, emb, created_at in rows:
+            messages.append(
+                {
+                    "thread_id": tid,
+                    "role": role,
+                    "content": content,
+                    "embedding": json.loads(emb) if emb else None,
+                    "created_at": created_at,
+                }
+            )
+        return messages
+    except Exception:
+        logger.exception("Failed to fetch messages by date")
+        return []
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors."""
+    if not a or not b or len(a) != len(b):
+        return -1.0
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(y * y for y in b) ** 0.5
+    if norm_a == 0 or norm_b == 0:
+        return -1.0
+    return dot / (norm_a * norm_b)
+
+
+def search_messages_by_embedding(
+    query_embedding: list[float],
+    top_k: int = 5,
+    db_path: str = THREADS_DB_PATH,
+) -> list[dict]:
+    """Return up to top_k messages semantically close to the query embedding."""
+    try:
+        _init_db(db_path)
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.execute(
+                "SELECT thread_id, role, content, embedding, created_at FROM messages WHERE embedding IS NOT NULL"
+            )
+            rows = cursor.fetchall()
+        scored = []
+        for tid, role, content, emb, created_at in rows:
+            emb_list = json.loads(emb)
+            sim = _cosine_similarity(query_embedding, emb_list)
+            scored.append(
+                (
+                    sim,
+                    {
+                        "thread_id": tid,
+                        "role": role,
+                        "content": content,
+                        "embedding": emb_list,
+                        "created_at": created_at,
+                    },
+                )
+            )
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [item[1] for item in scored[:top_k]]
+    except Exception:
+        logger.exception("Failed to perform semantic search over messages")
+        return []
+
+
+def save_snapshot(
+    snapshot_date: str,
+    summary: str,
+    embedding: Optional[list[float]] = None,
+    created_at: Optional[int] = None,
+    db_path: str = THREADS_DB_PATH,
+) -> None:
+    """Save metadata about a daily snapshot."""
+    try:
+        _init_db(db_path)
+        with sqlite3.connect(db_path) as conn:
+            conn.execute(
+                """
+                INSERT INTO snapshots (snapshot_date, summary, embedding, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    snapshot_date,
+                    summary,
+                    json.dumps(embedding) if embedding is not None else None,
+                    created_at or int(time.time()),
+                ),
+            )
+            conn.commit()
+    except Exception:
+        logger.exception("Failed to save snapshot for %s", snapshot_date)
+
+
+def get_snapshots_by_date(date_str: str, db_path: str = THREADS_DB_PATH) -> list[dict]:
+    """Return snapshots created on the given date (YYYY-MM-DD)."""
+    try:
+        _init_db(db_path)
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.execute(
+                """
+                SELECT snapshot_date, summary, embedding, created_at
+                FROM snapshots
+                WHERE snapshot_date = ?
+                ORDER BY created_at
+                """,
+                (date_str,),
+            )
+            rows = cursor.fetchall()
+        snapshots = []
+        for s_date, summary, emb, created_at in rows:
+            snapshots.append(
+                {
+                    "snapshot_date": s_date,
+                    "summary": summary,
+                    "embedding": json.loads(emb) if emb else None,
+                    "created_at": created_at,
+                }
+            )
+        return snapshots
+    except Exception:
+        logger.exception("Failed to fetch snapshots by date")
+        return []
 
 
 def cleanup_old_threads(max_age_days: int, db_path: str = THREADS_DB_PATH) -> None:

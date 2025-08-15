@@ -478,7 +478,7 @@ async def main():
     
     # Диагностика сети перед подключением
     try:
-        logger.info(f"Проверка подключения к api.telegram.org...")
+        logger.info("Проверка подключения к api.telegram.org...")
         ip_address = socket.gethostbyname("api.telegram.org")
         logger.info(f"IP адрес api.telegram.org: {ip_address}")
         
@@ -512,18 +512,33 @@ async def main():
         raise SystemExit(f"Не удалось подключиться: {e}")
     me = await client.get_me()
     if BOT_TOKEN or getattr(me, "bot", False):
-        await client.set_bot_commands(
-            [
-                BotCommand(SHORT_COMMANDS[SEARCH_CMD].lstrip("/"), "Semantic search documents"),
-                BotCommand(SHORT_COMMANDS[INDEX_CMD].lstrip("/"), "Index documents"),
-                BotCommand(SHORT_COMMANDS[DEEPSEEK_CMD].lstrip("/"), "Ask DeepSeek"),
-                BotCommand(SHORT_COMMANDS[VOICE_ON_CMD].lstrip("/"), "Enable voice responses"),
-                BotCommand(SHORT_COMMANDS[VOICE_OFF_CMD].lstrip("/"), "Disable voice responses"),
-                BotCommand(SHORT_COMMANDS[HELP_CMD].lstrip("/"), "Show help"),
-                BotCommand(SHORT_COMMANDS[MENU_CMD].lstrip("/"), "Show command menu"),
-            ],
-            scope=BotCommandScopeDefault(),
-        )
+        if hasattr(client, "set_bot_commands"):
+            await client.set_bot_commands(
+                [
+                    BotCommand(
+                        SHORT_COMMANDS[SEARCH_CMD].lstrip("/"), "Semantic search documents"
+                    ),
+                    BotCommand(
+                        SHORT_COMMANDS[INDEX_CMD].lstrip("/"), "Index documents"
+                    ),
+                    BotCommand(
+                        SHORT_COMMANDS[DEEPSEEK_CMD].lstrip("/"), "Ask DeepSeek"
+                    ),
+                    BotCommand(
+                        SHORT_COMMANDS[VOICE_ON_CMD].lstrip("/"), "Enable voice responses"
+                    ),
+                    BotCommand(
+                        SHORT_COMMANDS[VOICE_OFF_CMD].lstrip("/"), "Disable voice responses"
+                    ),
+                    BotCommand(
+                        SHORT_COMMANDS[HELP_CMD].lstrip("/"), "Show help"
+                    ),
+                    BotCommand(
+                        SHORT_COMMANDS[MENU_CMD].lstrip("/"), "Show command menu"
+                    ),
+                ],
+                scope=BotCommandScopeDefault(),
+            )
     BOT_USERNAME = (me.username or "").lower()
     BOT_ID = me.id
     try:
