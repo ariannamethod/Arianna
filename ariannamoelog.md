@@ -51,3 +51,13 @@ ground, not from memory. Own claim held stricter than others'.
 - BPE core / byte-map / merges reused from `tok.h` (GLM-verified); only the Split branch was new.
 - Surgery status: YaRN ✓ (P0), router ✓ (P0), tokenizer pretok ✓. Remaining: **converter** (real fp8→int4, unpack 3D gate_up, int8 MTP) + **integrate** `arch_mistral4` into full `glm.c` for streaming under P2.
 - 🔁 recurring: colibri upstream is active (fork +17 ahead at fork time) — periodically `git log` upstream for engine fixes worth cherry-picking to `arch/mistral4`.
+
+### arch_mistral4 INTEGRATED into the full glm.c engine (tf 32/32, tool)
+- Six surgical branches behind `arch==ARCH_MISTRAL4`, GLM path (default) untouched:
+  (1) config `model_type` detect + YaRN inv_freq precompute (`_compute_yarn` verbatim);
+  (2) `rope_interleave` YaRN inv_freq + ascale; (3) moe router softmax (no e_score_bias);
+  (4) loader `router_bias` skipped; (5) attention llama4-scale `1+β·ln(1+floor(pos/orig_max))` on full query; (6) Cfg fields.
+- `convert_mistral4.py`: unpack 3D `gate_up_proj (E,2I,D)` → per-expert container (96 tensors on tiny, shapes verified).
+- polygon: `gcc -Wall` **0 errors**, GLM path compiles; **TF parity through the FULL engine (streaming + expert-cache) 32/32 == tf_pred** (SNAP=container REF=ref TF=1). greedy follows by ref self-consistency 20/20 (REPLAY is perf-only, does not diff argmax).
+- banner still prints "GLM C engine (glm_moe_dsa)" — printed before model_init, arch unknown there; cosmetic, arch works (proven by parity). arch-banner deferred to loaded-print.
+- **All 4 surgery tasks done: YaRN, router, pretok, converter — arch reproduces token-exact in the real engine.** NEXT toward P2: real fp8→int4 weights (download ~121GB, Oleg's word) + first breath on polygon.
