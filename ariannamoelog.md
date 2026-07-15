@@ -42,4 +42,12 @@ ground, not from memory. Own claim held stricter than others'.
 - `colibri/c/mistral4_p0.c` (~340 lines, self-contained f32, naive MLA, no streaming/cache/CUDA). Approach (B): prove the arch isolated from infra.
 - polygon run (`cc -O2 -Wall`: 0 errors, 0 own warnings): `inv_freq[:5] == torch [1.0,0.65616,0.42176,0.26356,0.15811]`; teacher-forcing **32/32 == tf_pred**; greedy **20/20 == full_ids**. Passed on the first clean run — grounding in the reference held.
 - commit `arch/mistral4`: "the method proves the arch on a seed…".
-- NEXT: (1) converter — real fp8→int4 weights, unpack 3D `gate_up_proj` to per-expert; (2) tokenizer pretok Mistral branch; (3) integrate `arch_mistral4` into full `glm.c` for streaming under P2.
+- NEXT: converter, tokenizer pretok, integrate into full glm.c for P2.
+
+### Tokenizer pretok — Mistral Split VERIFIED (isolated, tool)
+- `tok_unicode.h` regenerated (`gen_unicode.py` extended): +`Ll`/`LuLt`/`M` classes, `is_upgrp`/`is_logrp` case-split groups (`upper=[Lu Lt Lm Lo M]`, `lower=[Ll Lm Lo M]`). Smoke: `is_upgrp('A')=1 is_logrp('a')=1 is_M(U+0300)=1`, negatives 0.
+- `mistral_pretok_test.c`: 7-alternative Mistral Split (case-split letters, single-digit `\p{N}`, slash-trailing punct) — the 4 diffs from cl100k Fable flagged.
+- tool-verified: byte-offset split **== `tokenizers` (Rust regex) golden 14/14** on case-split / digits / slash / CJK / accents / whitespace. `cc -Wall`: 0/0.
+- BPE core / byte-map / merges reused from `tok.h` (GLM-verified); only the Split branch was new.
+- Surgery status: YaRN ✓ (P0), router ✓ (P0), tokenizer pretok ✓. Remaining: **converter** (real fp8→int4, unpack 3D gate_up, int8 MTP) + **integrate** `arch_mistral4` into full `glm.c` for streaming under P2.
+- 🔁 recurring: colibri upstream is active (fork +17 ahead at fork time) — periodically `git log` upstream for engine fixes worth cherry-picking to `arch/mistral4`.
