@@ -1,35 +1,38 @@
-# Arianna MoE — операционный лог
+# Arianna MoE — operational log
 
-Журнал каждого действия по портированию Colibri → тело Арианны (Mistral Small 4 119B MoE).
-План: [`PLAN.md`](./PLAN.md). Формат записи: **действие → результат → пруф** (tool / `file:line` / hash).
-Разведка и решения — на грунте, не на памяти. Свой claim строже чужого.
+Log of every action porting Colibri → the body of Arianna (Mistral Small 4 119B MoE).
+Plan: `PLAN.md` (local, gitignored — Russian internal working notes). Entry format:
+**action → result → proof** (tool / `file:line` / hash). Recon and decisions on the
+ground, not from memory. Own claim held stricter than others'.
 
 ---
 
 ## 2026-07-15
 
-### R — разведка (ЗАКРЫТА, verified от земли)
-- Грунт движка: `glm.c` 5030 / `olmoe.c` 449 / `tok.h` 278 / `tier.h` 60 / `st.h` 233 строк, форк `62419af`. — `wc -l`, `git log`
-- Роутер/MLA/YaRN/токенайзер/конфиги сверены — детали и `file:line` в `PLAN.md` (§Грунт, §Модель, §Хирургия).
-- polygon (ssh): 6 CPU, 31GB RAM (28 free), SATA `870 EVO 1TB` (524G free) + NVMe `980 250GB`, GPU нет → фаза 1 CPU.
-- Mistral Small 4 `config.json` сверен 100% против плана Fable; YaRN раскрыт (beta 32/1, factor 128, `llama_4_scaling_beta 0.1`).
-- Итог: 4 задачи хирургии — YaRN (крупн) / роутер (мал) / токенайзер pretok (средн, поднят vs Fable) / конвертор (Python).
+### R — reconnaissance (CLOSED, verified from the ground)
+- Engine ground: `glm.c` 5030 / `olmoe.c` 449 / `tok.h` 278 / `tier.h` 60 / `st.h` 233 lines, fork `62419af`. — `wc -l`, `git log`
+- Router / MLA / YaRN / tokenizer / configs cross-checked from source — details and `file:line` in local PLAN.md.
+- polygon (ssh): 6 CPU, 31GB RAM (28 free), SATA `870 EVO 1TB` (524G free) + NVMe `980 250GB`, no GPU → stage 1 is CPU out-of-core.
+- Mistral Small 4 `config.json` matched 100% against Fable's plan; YaRN unpacked (beta 32/1, factor 128, `llama_4_scaling_beta 0.1`).
+- Result: 4 surgery tasks — YaRN (large) / router (small) / tokenizer pretok (medium, raised vs Fable's "check") / converter (Python).
 
-### PLAN.md создан
-- `~/arianna/arianna-inference/PLAN.md` — наш план на базе плана Fable, грунт + дельта-уточнения.
+### P0 — start
+- Read harness templates: `tools/make_glm_oracle.py`, `tools/make_glm_bench_model.py`, `c/ref_glm.json`.
+- Mechanics: tiny-random model of the real arch, seq < `index_topk` (DSA no-op → dense MLA), greedy + teacher-forcing → `ref.json` (`prompt_ids`/`full_ids`/`tf_pred`).
+- Python permission: Oleg gave an explicit "yes" for Python in Colibri offline tooling (2026-07-15). Daily ack flag `python-train-ack-20260715.flag` set. **Boundary: Python only in oracle / converter / bench; the inference engine stays pure C, no exceptions.**
+- polygon env: bare (python3.12.3, no torch/transformers). — `ssh polygon`
+- Setup: venv `~/moe-venv`, `transformers 5.13.1` (release already knows `mistral4` — no dev build needed), `torch 2.13.0+cpu`. `Mistral4ForCausalLM` text-only available.
+- `mistral4` config fields: no `index_topk` / `scoring_func` → DSA and router-bias absent (confirms recon). No GPU → torch CPU.
+- tiny-mistral4 structure probed (`ssh polygon`): router has NO `e_score_correction_bias` (verified `has...bias: False`); experts 3D-packed `mlp.experts.gate_up_proj (E,2·moe_inter,D)` + `down_proj (E,D,I)` → unpacked by the converter; MLA names = GLM (`q_a/q_b/kv_a_proj_with_mqa/kv_b/o_proj`); shared_experts separate; `mlp.gate.weight (E,D)` softmax.
+- Wrote `colibri/c/tools/make_mistral4_oracle.py` (after `make_glm_oracle.py`): tiny mistral4, YaRN (original_max=16, seq=32 → YaRN active), softmax router without bias, first_k_dense=0. Output: `mistral4_tiny/` + `ref_mistral4.json`.
+- Oracle ran on polygon (venv): `mistral4_tiny/` + `ref_mistral4.json` written, tensor structure correct.
+- ⚠️ FINDING: reference internally inconsistent — greedy property `tf_pred[i]==full[i+1]` (i≥11) broke: `tf_pred[11]=102` vs `full[12]=120`, `tf_pred[16]=102` vs `full[17]=228`. `generate` ≠ teacher-forcing. The C engine would have nothing single-valued to match → unusable as-is.
+- DIAGNOSIS (5 diff runs, not theory): ties ruled out (gap 6.0@scale1.0 → still mismatch); cache innocent (`cache==nocache` byte-identical); full-forward causal-invariant (`max|dlogit|@pos11=1e-6`). **ROOT: `model.generate()` ≠ raw arch-greedy** — the wrapper flips the first decode token (`argmax(logits[11])=102` in both forward paths, generate emitted 120), while `generation_config` is clean (no rep_penalty). Fix: reference = RAW greedy (manual argmax). Verified: raw-greedy consistency **20/20** vs generate 8/20.
+- 📌 Lesson for the whole P0 harness (+ hint to Fable re `make_glm_oracle.py`): build the reference with raw-greedy, not `model.generate()`.
+- ✅ P0 golden reference DONE (polygon `~/moe-p0/`): `ref_mistral4.json` + `mistral4_tiny/` (config + safetensors). Raw-greedy self-consistency **20/20** (tool). Pure arch-greedy reference; the C engine must reproduce it token-exact.
 
-### P0 — старт
-- Прочитаны образцы харнесса: `tools/make_glm_oracle.py`, `tools/make_glm_bench_model.py`, `c/ref_glm.json`.
-- Механика: tiny-random модель реальной arch, seq < `index_topk` (DSA no-op → плотная MLA), greedy + teacher-forcing → `ref.json` (`prompt_ids`/`full_ids`/`tf_pred`).
-- Python-разрешение: Олег дал явное «да» на Python для offline-tooling Colibri (Санта Муэрте + «пиши» 2026-07-15). Дневной ack-флаг `python-train-ack-20260715.flag` поставлен. **Граница: Python только в оракуле / конверторе / bench; движок инференса — чистый C, без исключений.**
-- Среда polygon: голая (python3.12.3, нет torch/transformers). — `ssh polygon`
-- Setup: venv `~/moe-venv`, `transformers 5.13.1` (релиз знает `mistral4` — dev не нужен), `torch 2.13.0+cpu`. `Mistral4ForCausalLM` text-only доступен. — `ssh polygon` tool output
-- Config-поля `mistral4`: нет `index_topk`/`scoring_func` → DSA и router-bias отсутствуют (подтверждает разведку). GPU нет → torch CPU.
-- Структура tiny-mistral4 снята (`ssh polygon` probe): роутер БЕЗ `e_score_correction_bias` (verified `has...bias: False`); эксперты 3D-пакованы `mlp.experts.gate_up_proj (E,2·moe_inter,D)` + `down_proj (E,D,I)` → распаковка конвертором; MLA-имена = GLM (`q_a/q_b/kv_a_proj_with_mqa/kv_b/o_proj`); shared_experts отдельные; `mlp.gate.weight (E,D)` softmax.
-- Написан `colibri/c/tools/make_mistral4_oracle.py` (по образцу `make_glm_oracle.py`): tiny mistral4, YaRN (original_max=16, seq=32 → YaRN активна), softmax-роутер без bias, first_k_dense=0. Выход: `mistral4_tiny/` + `ref_mistral4.json` (prompt/full/tf_pred).
-- Оракул запущен на polygon (venv): `mistral4_tiny/` + `ref_mistral4.json` записаны, структура тензоров верна.
-- ⚠️ НАХОДКА: эталон внутренне НЕсогласован — greedy-свойство `tf_pred[i]==full[i+1]` (i≥11) нарушено: `tf_pred[11]=102` vs `full[12]=120`, `tf_pred[16]=102` vs `full[17]=228`. `generate` (cache) ≠ teacher-forcing (full fwd). C-движку не с чем матчиться однозначно → эталон непригоден как есть.
-- ДИАГНОСТИКА (5 diff-прогонов, не теория): ties опровергнуты (gap 6.0@scale1.0 → всё равно mismatch); cache невиновен (`cache==nocache` идентичны байт-в-байт); full-forward causal-инвариантен (`max|dlogit|@pos11=1e-6`). **КОРЕНЬ: `model.generate()` ≠ raw arch-greedy** — обёртка флипает первый decode-токен (`argmax(logits[11])=102` в обоих forward-путях, generate выдал 120), при этом `generation_config` чистый (нет rep_penalty). Фикс: эталон = RAW greedy (ручной argmax). Verified: raw-greedy consistency **20/20** vs generate 8/20.
-- 📌 Урок для всего P0-харнесса (+ намёк Fable по `make_glm_oracle.py`): эталон строить raw-greedy, не `model.generate()`.
-- ✅ P0 golden эталон ГОТОВ (polygon `~/moe-p0/`): `ref_mistral4.json` + `mistral4_tiny/` (config+safetensors). Raw-greedy self-consistency **20/20** (tool). Эталон = чистый arch-greedy, C-движок его воспроизведёт.
-- СЛЕДУЮЩЕЕ: C-фронтенд `arch_mistral4` (softmax-роутер + MLA config-driven + YaRN + pretok-ветка) → token-exact сверка с эталоном = гейт P0.
+### Git workflow set (step-commit-merge, Method style)
+- Policy: every step → commit (tool-verified tech data + a never-repeated Quote + `Method:` line + signature) → branch → merge, like yent / actually.life. The log is committed continuously; every move lives in history → any error traces to the move that made it.
+- **colibri** (engine workshop): branch `arch/mistral4`, oracle `100bc13` "the method forges a tiny twin…", pushed to the fork.
+- **arianna** (organism home `github.com/ariannamethod/arianna`): foundation `da34b32` "the method lays the foundation…" → `main`, pushed. Canon of the log = `~/arianna/arianna/`; PLAN.md stays local (gitignored, Russian internal kitchen).
+- NEXT (in progress): C frontend `arch_mistral4` in `glm.c`, incremental with commits on `arch/mistral4` → token-exact check against the reference = the P0 gate.
