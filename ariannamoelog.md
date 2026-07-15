@@ -35,4 +35,11 @@ ground, not from memory. Own claim held stricter than others'.
 - Policy: every step → commit (tool-verified tech data + a never-repeated Quote + `Method:` line + signature) → branch → merge, like yent / actually.life. The log is committed continuously; every move lives in history → any error traces to the move that made it.
 - **colibri** (engine workshop): branch `arch/mistral4`, oracle `100bc13` "the method forges a tiny twin…", pushed to the fork.
 - **arianna** (organism home `github.com/ariannamethod/arianna`): foundation `da34b32` "the method lays the foundation…" → `main`, pushed. Canon of the log = `~/arianna/arianna/`; PLAN.md stays local (gitignored, Russian internal kitchen).
-- NEXT (in progress): C frontend `arch_mistral4` in `glm.c`, incremental with commits on `arch/mistral4` → token-exact check against the reference = the P0 gate.
+- NEXT (in progress): C frontend `arch_mistral4` → token-exact check against the reference = the P0 gate.
+
+### P0 GATE PASSED — arch parity on tiny (tool-verified)
+- Ported `modeling_mistral4.py` semantics to C from source (probes, not guesses): yarn inv_freq (dim = qk_rope, `_compute_yarn_parameters` verbatim), interleaved rope, llama4 attn-scale `1+β·ln(1+floor(pos/orig_max))`, softmax router (n_group=1 → group mask no-op), 3D experts chunk + SwiGLU, mscale `attention_factor=1.0` (probes: `inv_freq.shape=(32,)`, `cos.shape=(1,4,64)`, `get_mscale`).
+- `colibri/c/mistral4_p0.c` (~340 lines, self-contained f32, naive MLA, no streaming/cache/CUDA). Approach (B): prove the arch isolated from infra.
+- polygon run (`cc -O2 -Wall`: 0 errors, 0 own warnings): `inv_freq[:5] == torch [1.0,0.65616,0.42176,0.26356,0.15811]`; teacher-forcing **32/32 == tf_pred**; greedy **20/20 == full_ids**. Passed on the first clean run — grounding in the reference held.
+- commit `arch/mistral4`: "the method proves the arch on a seed…".
+- NEXT: (1) converter — real fp8→int4 weights, unpack 3D `gate_up_proj` to per-expert; (2) tokenizer pretok Mistral branch; (3) integrate `arch_mistral4` into full `glm.c` for streaming under P2.
